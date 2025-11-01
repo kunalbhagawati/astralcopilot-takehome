@@ -133,7 +133,7 @@ export type Database = {
       outline_request_status:
         | 'submitted'
         | 'validating_outline'
-        | 'generating_lesson'
+        | 'generating_lessons'
         | 'validating_lessons'
         | 'completed'
         | 'error';
@@ -263,7 +263,7 @@ export const Constants = {
       outline_request_status: [
         'submitted',
         'validating_outline',
-        'generating_lesson',
+        'generating_lessons',
         'validating_lessons',
         'completed',
         'error',

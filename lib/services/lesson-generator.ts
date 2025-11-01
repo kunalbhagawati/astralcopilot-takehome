@@ -1,15 +1,20 @@
 import { createClient } from '@/lib/supabase/server';
-import { OutlineRequestStatus, LessonStatus } from '@/lib/types/lesson';
+import { LessonStatus, OutlineRequestStatus } from '@/lib/types/lesson';
+import { createActor } from 'xstate';
+import { getAILLMClient } from './adapters/ai-llm-client';
+import { getLessonContentValidator } from './adapters/lesson-content-validator';
 import { getOutlineValidator } from './adapters/outline-validator';
-import { getLessonStructurer } from './adapters/lesson-structurer';
+import { mapStateToStatus as mapOutlineStateToStatus, outlineRequestMachine } from './machines/outline-request.machine';
 
 /**
  * State machine for lesson generation
  * Manages the async background process of generating a lesson from an outline request
+ * Uses XState v5.23.0 for state management - https://statelyai.github.io/xstate/
  */
-export class LessonGenerator {
+export class OutlineRequestPipeline {
   private validator = getOutlineValidator();
-  private structurer = getLessonStructurer();
+  private aiClient = getAILLMClient();
+  private lessonValidator = getLessonContentValidator();
 
   /**
    * Processes an outline request through the state machine
@@ -31,36 +36,64 @@ export class LessonGenerator {
         return;
       }
 
-      // State: VALIDATING_OUTLINE
-      await this.updateOutlineRequestStatus(outlineRequestId, 'validating_outline');
+      // Initialize the outline request state machine
+      const outlineActor = createActor(outlineRequestMachine, {
+        input: {
+          outlineRequestId,
+          outline: outlineRequest.outline,
+        },
+      });
 
+      outlineActor.start();
+
+      // Subscribe to snapshot changes and sync with database
+      outlineActor.subscribe((snapshot) => {
+        const status = mapOutlineStateToStatus(snapshot.value);
+        const error = snapshot.context.error;
+        this.updateOutlineRequestStatus(outlineRequestId, status, error).catch((err) => {
+          console.error('Failed to update outline request status:', err);
+        });
+      });
+
+      // Transition: submitted -> validating_outline
+      outlineActor.send({ type: 'outline.validation.start' });
+
+      // State: VALIDATING_OUTLINE
       const validationResult = await this.validator.validate(outlineRequest.outline);
 
       if (!validationResult.valid) {
-        await this.updateOutlineRequestStatus(outlineRequestId, 'error', {
-          message: 'Validation failed',
-          errors: validationResult.errors,
+        outlineActor.send({
+          type: 'outline.validation.failed',
+          error: {
+            message: 'Validation failed',
+            errors: validationResult.errors,
+          },
         });
         return;
       }
 
-      // State: GENERATING_LESSON
-      await this.updateOutlineRequestStatus(outlineRequestId, 'generating_lesson');
+      // Transition: validating_outline -> generating_lessons
+      outlineActor.send({ type: 'outline.validation.success' });
 
-      await this.structurer.structure(outlineRequest.outline);
+      // State: GENERATING_LESSON - Use AI LLM client to generate lesson
+      const lessonContent = await this.aiClient.generateLesson(outlineRequest.outline);
 
-      // Create lesson record
+      // Create lesson record with content
       const { data: lesson, error: lessonError } = await supabase
         .from('lesson')
         .insert({
           status: 'generated' as LessonStatus,
+          content: lessonContent,
         })
         .select()
         .single();
 
       if (lessonError || !lesson) {
         console.error('Failed to create lesson:', lessonError);
-        await this.updateOutlineRequestStatus(outlineRequestId, 'error', { message: 'Failed to create lesson record' });
+        outlineActor.send({
+          type: 'outline.lesson.generation.failed',
+          error: { message: 'Failed to create lesson record' },
+        });
         return;
       }
 
@@ -72,20 +105,61 @@ export class LessonGenerator {
 
       if (mappingError) {
         console.error('Failed to create mapping:', mappingError);
-        await this.updateOutlineRequestStatus(outlineRequestId, 'error', { message: 'Failed to create mapping' });
+        outlineActor.send({
+          type: 'outline.lesson.generation.failed',
+          error: { message: 'Failed to create mapping' },
+        });
         return;
       }
 
-      // State: VALIDATING_LESSONS
-      await this.updateOutlineRequestStatus(outlineRequestId, 'validating_lessons');
+      // Transition: generating_lessons -> validating_lessons (nested state: lesson_validating)
+      outlineActor.send({ type: 'outline.lesson.generation.success', lessonId: lesson.id });
+
+      // State: VALIDATING_LESSONS.LESSON_VALIDATING
+      // Update lesson status to validating
       await this.updateLessonStatus(lesson.id, 'validating');
 
-      // TODO: Add lesson validation logic here
-      // For now, we'll just mark it as ready_to_use
+      // Validate lesson content structure
+      const structureValidation = await this.lessonValidator.validate(lessonContent);
+
+      if (!structureValidation.valid) {
+        await this.updateLessonStatus(lesson.id, 'error', {
+          message: 'Lesson content validation failed: ' + (structureValidation.errors?.join(', ') || 'Unknown error'),
+        });
+        outlineActor.send({
+          type: 'outline.lesson.validation.failed',
+          error: {
+            message: 'Lesson content validation failed: ' + (structureValidation.errors?.join(', ') || 'Unknown error'),
+          },
+        });
+        return;
+      }
+
+      // Validate lesson quality using AI
+      const qualityValidation = await this.aiClient.validateLesson(lessonContent);
+
+      if (!qualityValidation.valid) {
+        await this.updateLessonStatus(lesson.id, 'error', {
+          message: 'Lesson quality validation failed: ' + (qualityValidation.errors?.join(', ') || 'Unknown error'),
+        });
+        outlineActor.send({
+          type: 'outline.lesson.validation.failed',
+          error: {
+            message: 'Lesson quality validation failed: ' + (qualityValidation.errors?.join(', ') || 'Unknown error'),
+          },
+        });
+        return;
+      }
+
+      // Update lesson status to ready_to_use
       await this.updateLessonStatus(lesson.id, 'ready_to_use');
 
-      // State: COMPLETED
-      await this.updateOutlineRequestStatus(outlineRequestId, 'completed');
+      // Transition: validating_lessons.lesson_validating -> validating_lessons.lesson_ready
+      // Then automatically transitions to completed
+      outlineActor.send({ type: 'outline.lesson.validation.success' });
+
+      // Stop the actor after completion
+      outlineActor.stop();
     } catch (error) {
       console.error('Error processing outline request:', error);
       await this.updateOutlineRequestStatus(outlineRequestId, 'error', {
@@ -119,13 +193,18 @@ export class LessonGenerator {
   /**
    * Updates the lesson status in the database
    */
-  private async updateLessonStatus(lessonId: string, status: LessonStatus): Promise<void> {
+  private async updateLessonStatus(lessonId: string, status: LessonStatus, error?: { message: string }): Promise<void> {
     const supabase = await createClient();
 
-    const { error } = await supabase.from('lesson').update({ status }).eq('id', lessonId);
-
+    const updateData: { status: LessonStatus; error?: { message: string } } = { status };
     if (error) {
-      console.error(`Failed to update lesson status to ${status}:`, error);
+      updateData.error = error;
+    }
+
+    const { error: updateError } = await supabase.from('lesson').update(updateData).eq('id', lessonId);
+
+    if (updateError) {
+      console.error(`Failed to update lesson status to ${status}:`, updateError);
     }
   }
 }
@@ -135,10 +214,10 @@ export class LessonGenerator {
  * This function returns immediately while processing continues
  */
 export async function processOutline(outlineRequestId: string): Promise<void> {
-  const generator = new LessonGenerator();
+  const pipeline = new OutlineRequestPipeline();
 
   // Run the process in the background (don't await)
-  generator.processOutlineRequest(outlineRequestId).catch((error) => {
+  pipeline.processOutlineRequest(outlineRequestId).catch((error) => {
     console.error('Background lesson generation failed:', error);
   });
 }

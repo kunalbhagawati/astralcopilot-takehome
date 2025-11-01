@@ -1,4 +1,5 @@
 import { ValidationResult } from '@/lib/types/lesson';
+import { isEmpty, isNil } from 'ramda';
 
 /**
  * Adapter interface for outline validation systems
@@ -9,40 +10,26 @@ export interface OutlineValidator {
 }
 
 /**
- * Dummy implementation for development
- * Always returns valid with a simulated delay
+ * Runs validation for the outline request.
  */
-export class DummyOutlineValidator implements OutlineValidator {
+export class SimpleOutlineValidator implements OutlineValidator {
   async validate(outline: string): Promise<ValidationResult> {
-    // Simulate processing time
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-
     // Basic validation: check if outline is not empty
-    if (!outline || outline.trim().length === 0) {
+    if (isNil(outline) || isEmpty(outline.trim())) {
       return {
         valid: false,
         errors: ['Outline cannot be empty'],
       };
     }
 
-    // Check minimum length
-    if (outline.trim().length < 10) {
-      return {
-        valid: false,
-        errors: ['Outline is too short. Please provide more detail.'],
-      };
-    }
+    // TODO Check if outline LLM can understand the request.
 
     // All checks passed
     return {
       valid: true,
-      warnings: outline.length > 1000 ? ['Outline is quite long. Generation may take more time.'] : undefined,
     };
   }
 }
 
 // Factory function to get the validator instance
-export function getOutlineValidator(): OutlineValidator {
-  // In the future, this could return different implementations based on config
-  return new DummyOutlineValidator();
-}
+export const getOutlineValidator = (): OutlineValidator => new SimpleOutlineValidator();

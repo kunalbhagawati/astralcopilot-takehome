@@ -2,7 +2,7 @@
 export type OutlineRequestStatus =
   | 'submitted'
   | 'validating_outline'
-  | 'generating_lesson'
+  | 'generating_lessons'
   | 'validating_lessons'
   | 'completed'
   | 'error';
@@ -41,7 +41,6 @@ export interface MappingOutlineRequestLesson {
 export interface ValidationResult {
   valid: boolean;
   errors?: string[];
-  warnings?: string[];
 }
 
 // Structured lesson content

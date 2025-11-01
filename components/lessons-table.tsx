@@ -33,8 +33,11 @@ export function LessonsTable({ onLessonClick }: LessonsTableProps) {
           console.log('Realtime update:', payload);
 
           if (payload.eventType === 'INSERT') {
-            // Add new outline request to the list
-            setOutlineRequests((prev) => [payload.new as OutlineRequest, ...prev]);
+            // Add new outline request to the list if it doesn't already exist
+            setOutlineRequests((prev) => {
+              const exists = prev.some((request) => request.id === payload.new.id);
+              return exists ? prev : [payload.new as OutlineRequest, ...prev];
+            });
           } else if (payload.eventType === 'UPDATE') {
             // Update existing outline request
             setOutlineRequests((prev) =>
@@ -79,7 +82,7 @@ export function LessonsTable({ onLessonClick }: LessonsTableProps) {
     > = {
       submitted: { label: 'Submitted', variant: 'outline' },
       validating_outline: { label: 'Validating Outline', variant: 'secondary' },
-      generating_lesson: { label: 'Generating Lesson', variant: 'secondary' },
+      generating_lessons: { label: 'Generating Lessons', variant: 'secondary' },
       validating_lessons: { label: 'Validating Lessons', variant: 'secondary' },
       completed: { label: 'Completed', variant: 'default' },
       error: { label: 'Error', variant: 'destructive' },
@@ -89,7 +92,7 @@ export function LessonsTable({ onLessonClick }: LessonsTableProps) {
 
     return (
       <Badge variant={config.variant} className="flex items-center gap-1 w-fit">
-        {(status === 'validating_outline' || status === 'generating_lesson' || status === 'validating_lessons') && (
+        {(status === 'validating_outline' || status === 'generating_lessons' || status === 'validating_lessons') && (
           <Loader2 className="h-3 w-3 animate-spin" />
         )}
         {config.label}
