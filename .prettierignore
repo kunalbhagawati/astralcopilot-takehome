@@ -1,0 +1,11 @@
+docs/
+.vscode/
+.idea/
+.husky/
+node_modules/
+supabase/.branches
+supabase/.temp
+*.lock
+*.d.ts
+*.md
+*.sql

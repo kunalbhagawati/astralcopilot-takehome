@@ -6,8 +6,7 @@ export function SupabaseLogo() {
       height="30"
       viewBox="0 0 115 23"
       fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
+      xmlns="http://www.w3.org/2000/svg">
       <g clipPath="url(#clip0_4671_51136)">
         <g clipPath="url(#clip1_4671_51136)">
           <path
@@ -64,8 +63,7 @@ export function SupabaseLogo() {
           y1="11.1486"
           x2="19.3439"
           y2="14.4777"
-          gradientUnits="userSpaceOnUse"
-        >
+          gradientUnits="userSpaceOnUse">
           <stop stopColor="#249361" />
           <stop offset="1" stopColor="#3ECF8E" />
         </linearGradient>
@@ -75,26 +73,15 @@ export function SupabaseLogo() {
           y1="6.42177"
           x2="11.5325"
           y2="13.1398"
-          gradientUnits="userSpaceOnUse"
-        >
+          gradientUnits="userSpaceOnUse">
           <stop />
           <stop offset="1" stopOpacity="0" />
         </linearGradient>
         <clipPath id="clip0_4671_51136">
-          <rect
-            width="113.85"
-            height="21.8943"
-            fill="currentColor"
-            transform="translate(0.922119 0.456161)"
-          />
+          <rect width="113.85" height="21.8943" fill="currentColor" transform="translate(0.922119 0.456161)" />
         </clipPath>
         <clipPath id="clip1_4671_51136">
-          <rect
-            width="21.3592"
-            height="21.8943"
-            fill="currentColor"
-            transform="translate(0.919006 0.497101)"
-          />
+          <rect width="21.3592" height="21.8943" fill="currentColor" transform="translate(0.919006 0.497101)" />
         </clipPath>
       </defs>
     </svg>
