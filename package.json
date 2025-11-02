@@ -5,7 +5,17 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "prepare": "husky"
+    "prepare": "husky",
+    "supabase:start": "bunx supabase start",
+    "supabase:stop": "bunx supabase stop",
+    "supabase:restart": "bunx supabase stop && bunx supabase start",
+    "supabase:status": "bunx supabase status",
+    "supabase:db:reset": "bunx supabase db reset",
+    "supabase:studio": "open http://127.0.0.1:54323",
+    "supabase:types": "bunx supabase gen types typescript --local > lib/types/database.types.ts",
+    "supabase:migration:new": "bunx supabase migration new",
+    "supabase:db:diff": "bunx supabase db diff -f",
+    "supabase:logs": "bunx supabase logs"
   },
   "dependencies": {
     "@radix-ui/react-checkbox": "^1.3.1",
@@ -20,6 +30,7 @@
     "lucide-react": "^0.511.0",
     "next": "latest",
     "next-themes": "^0.4.6",
+    "ramda": "^0.32.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwind-merge": "^3.3.0"
@@ -27,6 +38,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@types/node": "^20",
+    "@types/ramda": "^0.31.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "autoprefixer": "^10.4.20",
