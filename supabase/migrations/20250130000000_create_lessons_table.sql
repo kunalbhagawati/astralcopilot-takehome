@@ -2,7 +2,7 @@
 CREATE TYPE outline_request_status AS ENUM (
   'submitted',
   'validating_outline',
-  'generating_lesson',
+  'generating_lessons',
   'validating_lessons',
   'completed',
   'error'
@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS outline_request (
 -- Create lesson table
 CREATE TABLE IF NOT EXISTS lesson (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  content JSONB NOT NULL,
+  error JSONB,
   status lesson_status NOT NULL DEFAULT 'generated',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
