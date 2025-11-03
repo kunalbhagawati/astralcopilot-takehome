@@ -3,7 +3,7 @@ import { LessonStatus, OutlineRequestStatus } from '@/lib/types/lesson';
 import { createActor } from 'xstate';
 import { getAILLMClient } from './adapters/ai-llm-client';
 import { getLessonContentValidator } from './adapters/lesson-content-validator';
-import { getOutlineValidator } from './adapters/outline-validator';
+import { getOutlineValidator, type EnhancedOutlineValidationResult } from './adapters/outline-validator';
 import { mapStateToStatus as mapOutlineStateToStatus, outlineRequestMachine } from './machines/outline-request.machine';
 
 /**
@@ -62,12 +62,25 @@ export class OutlineRequestPipeline {
       const validationResult = await this.validator.validate(outlineRequest.outline);
 
       if (!validationResult.valid) {
+        // Store detailed validation errors if using LLM validator
+        const errorData: { message: string; errors?: string[]; validationDetails?: unknown } = {
+          message: 'Validation failed',
+          errors: validationResult.errors,
+        };
+
+        // Add enhanced validation details if available (from LLMOutlineValidator)
+        const enhancedResult = validationResult as EnhancedOutlineValidationResult;
+        if (enhancedResult.enhancedResult) {
+          errorData.validationDetails = {
+            intent: enhancedResult.enhancedResult.intent,
+            specificity: enhancedResult.enhancedResult.specificity,
+            actionability: enhancedResult.enhancedResult.actionability,
+          };
+        }
+
         outlineActor.send({
           type: 'outline.validation.failed',
-          error: {
-            message: 'Validation failed',
-            errors: validationResult.errors,
-          },
+          error: errorData,
         });
         return;
       }

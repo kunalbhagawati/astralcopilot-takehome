@@ -1,5 +1,7 @@
 import { ValidationResult } from '@/lib/types/lesson';
 import { LessonContent, LessonSection } from '@/lib/types/lesson-structure.types';
+import type { LLMProvider } from './llm-config';
+import { getLLMProvider } from './llm-config';
 
 /**
  * Interface for AI LLM clients that generate and validate lessons
@@ -8,6 +10,11 @@ import { LessonContent, LessonSection } from '@/lib/types/lesson-structure.types
  * (OpenAI, Anthropic, etc.) without changing the business logic
  */
 export interface AILLMClient {
+  /**
+   * Provider name for this client
+   */
+  readonly provider: LLMProvider;
+
   /**
    * Generates lesson content from an outline
    *
@@ -32,6 +39,8 @@ export interface AILLMClient {
  * based on the outline text
  */
 export class DummyAILLMClient implements AILLMClient {
+  readonly provider = 'ollama' as const;
+
   async generateLesson(outline: string): Promise<LessonContent> {
     // Simulate API call delay (1-2 seconds)
     await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -228,11 +237,60 @@ Understanding ${topic.toLowerCase()} is essential for building robust solutions.
 }
 
 /**
+ * Ollama-based implementation of AILLMClient
+ * Uses Ollama for real LLM-based lesson generation and validation
+ */
+export class OllamaAILLMClient implements AILLMClient {
+  readonly provider = 'ollama' as const;
+  private ollamaClient: import('./ollama-client').OllamaClient;
+
+  constructor(ollamaClient?: import('./ollama-client').OllamaClient) {
+    if (ollamaClient) {
+      this.ollamaClient = ollamaClient;
+    } else {
+      // Dynamic import to avoid circular dependencies
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { createOllamaClient } = require('./ollama-client');
+      this.ollamaClient = createOllamaClient();
+    }
+  }
+
+  async generateLesson(outline: string): Promise<LessonContent> {
+    // First, structure the outline
+    const structuredOutline = await this.ollamaClient.structureOutline(outline);
+
+    // Then generate lesson from structured outline
+    const lessonContent = await this.ollamaClient.generateLesson(structuredOutline);
+
+    return lessonContent;
+  }
+
+  async validateLesson(content: LessonContent): Promise<ValidationResult> {
+    // Use LLM to validate quality
+    const qualityResult = await this.ollamaClient.validateLessonQuality(content);
+
+    return {
+      valid: qualityResult.valid,
+      errors: qualityResult.errors.length > 0 ? qualityResult.errors : undefined,
+    };
+  }
+}
+
+/**
  * Factory function to get an AI LLM client instance
  *
- * Returns DummyAILLMClient for now
- * Future: Can return OpenAIClient, AnthropicClient, etc. based on config/env
+ * Uses strategy pattern to select provider based on LLM_PROVIDER env var
  */
 export const getAILLMClient = (): AILLMClient => {
-  return new DummyAILLMClient();
+  const provider = getLLMProvider();
+
+  switch (provider) {
+    case 'ollama':
+      return new OllamaAILLMClient();
+    case 'openai':
+      // Future: return new OpenAILLMClient();
+      throw new Error('OpenAI provider not yet implemented');
+    default:
+      throw new Error(`Unknown LLM provider: ${provider}`);
+  }
 };
