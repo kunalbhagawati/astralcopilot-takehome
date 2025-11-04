@@ -2,6 +2,16 @@
 applyTo: ['app/**/*.ts', 'app/**/*.tsx', 'components/**/*.ts', 'components/**/*.tsx', 'lib/**/*.ts', 'lib/**/*.tsx']
 ---
 
+# Project Runtime and Package Manager
+
+**This project uses Bun as both the JavaScript runtime and package manager.**
+
+- Use `bun` for running scripts and managing dependencies
+- Use `bunx` for executing packages (equivalent to `npx`)
+- DO NOT use `npm`, `yarn`, or `pnpm` commands
+
+---
+
 # Pre-Implementation: Planning Phase
 
 ## When Planning Applies
@@ -71,8 +81,10 @@ applyTo: ['app/**/*.ts', 'app/**/*.tsx', 'components/**/*.ts', 'components/**/*.
 
 ### Function Rules
 
-- Prefer arrow functions for all functions.
+- Prefer arrow functions for all functions
   `const myFunction = (param: Type): ReturnType => { ... }`
+- Both arrow functions and regular function declarations work in Next.js
+- Exception: Avoid arrow functions in classes (not shared across instances)
 - MUST include JSDoc comment describing purpose and usage
 - Maximum 25 lines per function (hard limit - count opening to closing brace)
 - One task per function (Single Responsibility Principle)
@@ -113,18 +125,31 @@ const outer = () => {
 ### File Structure
 
 **Components (`components/**`):**
+
 - Pure UI components
 - Reusable across multiple pages
-- Named with PascalCase (e.g., `Button.tsx`, `UserCard.tsx`)
+- Files: kebab-case (e.g., `button.tsx`, `user-card.tsx`, `navigation-menu.tsx`)
+- Component names: PascalCase (e.g., `Button`, `UserCard`, `NavigationMenu`)
+- Prevents case-sensitivity issues across operating systems
 
 **Pages/Routes (`app/**`):**
+
 - Use Next.js App Router conventions
-- `page.tsx` for routes
-- `layout.tsx` for layouts
-- `route.ts` for API routes
-- `loading.tsx`, `error.tsx` for UI states
+- Special files (all kebab-case when applicable):
+  - `page.tsx` - Route endpoints
+  - `layout.tsx` - Shared UI (headers, nav, footers)
+  - `route.ts` - API endpoints
+  - `loading.tsx` - Loading skeletons
+  - `error.tsx` - Error boundaries
+  - `not-found.tsx` - 404 pages
+  - `template.tsx` - Re-rendered layouts
+  - `default.tsx` - Parallel route fallbacks
+- Route groups: `(auth)`, `(dashboard)` - Organizational, not in URL
+- Private folders: `_components`, `_lib` - Ignored by routing
+- Co-location: Components used only by specific routes can live alongside them
 
 **Utilities (`lib/**`):**
+
 - Business logic, services, utilities
 - Supabase clients and middleware
 - Type definitions
@@ -132,11 +157,13 @@ const outer = () => {
 ### Server vs Client Components
 
 **Default to Server Components:**
+
 - Fetch data directly from Supabase
 - No `"use client"` directive needed
 - Better performance and SEO
 
 **Use Client Components when:**
+
 - Using React hooks (useState, useEffect, etc.)
 - Handling user interactions (onClick, onChange)
 - Using browser-only APIs
@@ -146,18 +173,42 @@ const outer = () => {
 
 - Explicit TypeScript types for all props
 - Props interface should be defined before component
-- Example:
-  ```typescript
-  interface ButtonProps {
-    label: string;
-    onClick: () => void;
-    variant?: 'primary' | 'secondary';
-  }
 
-  export const Button = ({ label, onClick, variant = 'primary' }: ButtonProps) => {
-    // Implementation
-  }
-  ```
+### Export Patterns
+
+**Reusable Components (components/**):**
+Use named exports for better refactoring and auto-imports:
+
+```typescript
+interface ButtonProps {
+  label: string;
+  onClick: () => void;
+  variant?: 'primary' | 'secondary';
+}
+
+export const Button = ({ label, onClick, variant = 'primary' }: ButtonProps) => {
+  // Implementation
+}
+```
+
+**Next.js Special Files (page.tsx, layout.tsx, etc.):**
+Use default exports (Next.js requirement):
+
+```typescript
+interface PageProps {
+  params: { id: string };
+  searchParams: { [key: string]: string | string[] | undefined };
+}
+
+export default function Page({ params, searchParams }: PageProps) {
+  // Implementation
+}
+```
+
+**Rationale:**
+
+- Named exports: Better IDE support, safer refactors, prevents naming mistakes
+- Default exports: Required by Next.js for pages, layouts, route handlers, error/loading/not-found files
 
 ### Styling Strategy
 
@@ -248,7 +299,7 @@ const outer = () => {
 
 ## Next.js Development Server
 
-- NEVER run development servers (`npm run dev`, `yarn dev`) in AI agent mode
+- NEVER run development servers (`bun run dev`, `bun dev`) in AI agent mode
 - Assume dev server may already be running on default port (3000)
 - For verification, use: unit tests, curl commands, or log checking
 - Do NOT start new server instances
@@ -260,6 +311,181 @@ const outer = () => {
 - Export named functions: GET, POST, PUT, DELETE, PATCH
 - Always validate input and handle errors
 - Return `NextResponse` objects
+
+## Server Actions
+
+Server Actions are async functions executed on the server for data mutations and form handling.
+Reference: <https://nextjs.org/docs/app/building-your-application/data-fetching/server-actions-and-mutations>
+
+### Two Patterns
+
+**Function-level (inline in Server Components):**
+
+```typescript
+export default function Page() {
+  async function createPost(formData: FormData) {
+    'use server'
+    // Server Action logic
+    const title = formData.get('title')
+    // ... database mutation
+  }
+
+  return <form action={createPost}>...</form>
+}
+```
+
+**Module-level (separate file):**
+
+```typescript
+// app/actions/posts.ts
+'use server'
+
+export async function createPost(formData: FormData) {
+  // Server Action logic
+}
+
+export async function deletePost(id: string) {
+  // Server Action logic
+}
+```
+
+### Requirements
+
+- MUST be async functions
+- MUST include `"use server"` directive (function-level or module-level)
+- Arguments and return values MUST be serializable
+- Can be called from Server Components and Client Components
+- Use for form submissions, data mutations, and server-side operations
+
+## Data Fetching & Caching
+
+Reference: <https://nextjs.org/docs/app/building-your-application/data-fetching/fetching-caching-and-revalidating>
+
+### Fetching Patterns
+
+**Server Components (default):**
+
+```typescript
+// Cached by default
+async function getData() {
+  const res = await fetch('https://api.example.com/data')
+  return res.json()
+}
+
+export default async function Page() {
+  const data = await getData()
+  return <div>{data.title}</div>
+}
+```
+
+### Caching Options
+
+**Force Cache:**
+
+```typescript
+fetch('https://api.example.com/data', { cache: 'force-cache' })
+```
+
+**No Cache (dynamic):**
+
+```typescript
+fetch('https://api.example.com/data', { cache: 'no-store' })
+```
+
+**Time-based Revalidation:**
+
+```typescript
+// Revalidate every hour
+fetch('https://api.example.com/data', { next: { revalidate: 3600 } })
+```
+
+### On-Demand Revalidation
+
+**By Path:**
+
+```typescript
+import { revalidatePath } from 'next/cache'
+
+async function createPost() {
+  'use server'
+  // ... create post
+  revalidatePath('/posts')
+}
+```
+
+**By Tag:**
+
+```typescript
+import { revalidateTag } from 'next/cache'
+
+// Tag the fetch
+fetch('https://api.example.com/posts', { next: { tags: ['posts'] } })
+
+// Revalidate all fetches with this tag
+async function action() {
+  'use server'
+  revalidateTag('posts')
+}
+```
+
+### Route Segment Config
+
+```typescript
+// Force dynamic rendering
+export const dynamic = 'force-dynamic'
+
+// Revalidate every 60 seconds
+export const revalidate = 60
+```
+
+## Metadata & SEO
+
+Reference: <https://nextjs.org/docs/app/api-reference/functions/generate-metadata>
+
+### Static Metadata
+
+```typescript
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = {
+  title: 'Page Title',
+  description: 'Page description',
+  openGraph: {
+    title: 'OG Title',
+    description: 'OG Description',
+  },
+}
+
+export default function Page() {
+  return <div>Content</div>
+}
+```
+
+### Dynamic Metadata
+
+```typescript
+import type { Metadata } from 'next'
+
+export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
+  const post = await fetchPost(params.id)
+
+  return {
+    title: post.title,
+    description: post.excerpt,
+  }
+}
+
+export default function Page({ params }: { params: { id: string } }) {
+  // ...
+}
+```
+
+### Requirements
+
+- ONLY use in Server Components (metadata exports not supported in Client Components)
+- CANNOT export both `metadata` object and `generateMetadata` function from same route
+- Use static metadata when data doesn't depend on runtime information
+- Use `generateMetadata` for dynamic metadata based on route params or external data
 
 ---
 
@@ -284,8 +510,8 @@ const outer = () => {
 
 ## Post Implementation ✓
 
-- [ ] `npm run build` passes without errors
-- [ ] Type checking passes (if `npm run type-check` available)
+- [ ] `bun run build` passes without errors
+- [ ] Type checking passes (if `bunx run type-check` available)
 - [ ] Linting passes (`bunx lint-staged`)
 
 ## Documentation ✓
@@ -295,4 +521,3 @@ const outer = () => {
 - [ ] Complex logic commented
 - [ ] Versions documented
 - [ ] Server/Client Component clearly indicated
-

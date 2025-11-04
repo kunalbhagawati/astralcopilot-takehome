@@ -2,7 +2,7 @@
 export type OutlineRequestStatus =
   | 'submitted'
   | 'validating_outline'
-  | 'generating_lesson'
+  | 'generating_lessons'
   | 'validating_lessons'
   | 'completed'
   | 'error';
@@ -37,29 +37,11 @@ export interface MappingOutlineRequestLesson {
   created_at: string;
 }
 
-// Validation result
+// Validation result (simple valid/errors structure used by pipeline)
 export interface ValidationResult {
   valid: boolean;
   errors?: string[];
-  warnings?: string[];
 }
 
-// Structured lesson content
-export interface LessonContent {
-  title: string;
-  description: string;
-  sections: LessonSection[];
-  metadata?: {
-    difficulty?: string;
-    estimatedTime?: number;
-    topics?: string[];
-  };
-}
-
-export interface LessonSection {
-  id: string;
-  title: string;
-  content: string;
-  type: 'text' | 'question' | 'quiz' | 'exercise';
-  order: number;
-}
+// NOTE: For actual lesson content structure, use types from lesson-structure.types.ts
+// This file only contains DB record types and simple validation results

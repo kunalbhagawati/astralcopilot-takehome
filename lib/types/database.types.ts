@@ -1,28 +1,54 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: '13.0.5';
+  graphql_public: {
+    Tables: {
+      [_ in never]: never;
+    };
+    Views: {
+      [_ in never]: never;
+    };
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json;
+          operationName?: string;
+          query?: string;
+          variables?: Json;
+        };
+        Returns: Json;
+      };
+    };
+    Enums: {
+      [_ in never]: never;
+    };
+    CompositeTypes: {
+      [_ in never]: never;
+    };
   };
   public: {
     Tables: {
       lesson: {
         Row: {
+          content: Json;
           created_at: string | null;
+          error: Json | null;
           id: string;
           status: Database['public']['Enums']['lesson_status'];
           updated_at: string | null;
         };
         Insert: {
+          content: Json;
           created_at?: string | null;
+          error?: Json | null;
           id?: string;
           status?: Database['public']['Enums']['lesson_status'];
           updated_at?: string | null;
         };
         Update: {
+          content?: Json;
           created_at?: string | null;
+          error?: Json | null;
           id?: string;
           status?: Database['public']['Enums']['lesson_status'];
           updated_at?: string | null;
@@ -107,7 +133,7 @@ export type Database = {
       outline_request_status:
         | 'submitted'
         | 'validating_outline'
-        | 'generating_lesson'
+        | 'generating_lessons'
         | 'validating_lessons'
         | 'completed'
         | 'error';
@@ -228,13 +254,16 @@ export type CompositeTypes<
     : never;
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       lesson_status: ['generated', 'validating', 'ready_to_use', 'error'],
       outline_request_status: [
         'submitted',
         'validating_outline',
-        'generating_lesson',
+        'generating_lessons',
         'validating_lessons',
         'completed',
         'error',
