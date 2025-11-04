@@ -236,11 +236,9 @@ export const buildGenerationUserPrompt = (structuredOutline: StructuredOutline):
 ORIGINAL REQUEST:
 "${originalText}"
 
-TOPIC HIERARCHY:
-- Stream: ${hierarchy.stream}
-- Domain: ${hierarchy.domain}
+TOPIC:
 - Topic: ${hierarchy.topic}
-${hierarchy.subtopic ? `- Subtopic: ${hierarchy.subtopic}` : ''}
+- Related Domains: ${hierarchy.domains.join(', ')}
 
 CONTENT TYPE: ${contentType}
 
@@ -304,10 +302,8 @@ export const buildOutlineStructuringPrompt = (outline: string): string => {
 Extract and structure the following information:
 
 1. Topic Hierarchy:
-   - stream: Broad category (math, science, programming, etc.)
-   - domain: Medium specificity (algebra, biology, web-dev, etc.)
-   - topic: Specific topic
-   - subtopic: Optional very specific detail
+   - topic: The specific learning topic (must match taxonomy)
+   - domains: Array of related domain categories
 
 2. Content Type: quiz, lesson, tutorial, or exercise
 
@@ -323,10 +319,8 @@ Return JSON matching this structure:
 {
   "originalText": "${outline}",
   "hierarchy": {
-    "stream": "string",
-    "domain": "string",
-    "topic": "string",
-    "subtopic": "optional string"
+    "topic": "exact topic name from validation (string)",
+    "domains": ["array", "of", "domain", "strings"]
   },
   "contentType": "quiz" | "lesson" | "tutorial" | "exercise",
   "requirements": ["array of requirements"],

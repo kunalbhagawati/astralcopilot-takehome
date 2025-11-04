@@ -84,11 +84,23 @@ export class LLMOutlineValidator implements OutlineValidator {
 
       // Specificity errors
       if (enhancedResult.specificity.classification === 'vague') {
-        detailedErrors.push(
-          `Too vague: Please specify a more specific topic. Detected level: ${enhancedResult.specificity.level}`,
-        );
-        if (enhancedResult.specificity.suggestions) {
+        const matchInfo = enhancedResult.specificity.matchesTaxonomy
+          ? `Topic: ${enhancedResult.specificity.detectedHierarchy.topic}`
+          : 'Topic not found in taxonomy';
+
+        detailedErrors.push(`Too vague: Please specify a more specific topic. ${matchInfo}`);
+
+        if (enhancedResult.specificity.suggestions && enhancedResult.specificity.suggestions.length > 0) {
           detailedErrors.push(`Suggestions: ${enhancedResult.specificity.suggestions.join('; ')}`);
+        }
+      } else if (
+        !enhancedResult.specificity.matchesTaxonomy &&
+        enhancedResult.specificity.classification === 'specific'
+      ) {
+        // Topic is specific but doesn't match taxonomy
+        detailedErrors.push(`Topic "${enhancedResult.specificity.detectedHierarchy.topic}" not found in our taxonomy.`);
+        if (enhancedResult.specificity.suggestions && enhancedResult.specificity.suggestions.length > 0) {
+          detailedErrors.push(`Did you mean: ${enhancedResult.specificity.suggestions.join(', ')}?`);
         }
       }
 

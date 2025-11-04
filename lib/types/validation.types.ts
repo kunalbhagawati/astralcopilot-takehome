@@ -11,16 +11,15 @@ import { z } from 'zod';
 
 /**
  * Topic hierarchy structure for educational content
+ * Simplified structure: topic → domains[]
+ *
+ * Must match predefined taxonomy in lib/config/topic-taxonomy.ts
  */
 export interface TopicHierarchy {
-  /** Broad category (e.g., "mathematics", "science", "programming") */
-  stream: string;
-  /** Medium specificity (e.g., "algebra", "biology", "web-development") */
-  domain: string;
-  /** Specific topic (e.g., "quadratic equations", "photosynthesis", "React hooks") */
+  /** Specific learning topic (e.g., "React Hooks", "Quadratic Equations") */
   topic: string;
-  /** Optional very specific subtopic (e.g., "completing the square", "light-dependent reactions") */
-  subtopic?: string;
+  /** Related domain categories (e.g., ["web-development", "javascript", "frontend"]) */
+  domains: string[];
 }
 
 /**
@@ -43,13 +42,13 @@ export interface IntentClassification {
  * Checks if the outline is specific enough for lesson generation
  */
 export interface SpecificityAnalysis {
-  /** Detected specificity level */
-  level: 'stream' | 'domain' | 'topic' | 'subtopic';
-  /** Classification based on minimum required level */
+  /** Classification of specificity */
   classification: 'specific' | 'vague' | 'unclear';
+  /** Whether detected topic matches predefined taxonomy */
+  matchesTaxonomy: boolean;
   /** Detected topic hierarchy */
   detectedHierarchy: TopicHierarchy;
-  /** Suggestions for improvement if vague */
+  /** Suggestions for improvement if vague or not matching taxonomy */
   suggestions?: string[];
 }
 
@@ -129,18 +128,16 @@ export const IntentClassificationSchema = z.object({
  * Zod schema for TopicHierarchy
  */
 export const TopicHierarchySchema = z.object({
-  stream: z.string(),
-  domain: z.string(),
-  topic: z.string(),
-  subtopic: z.string().optional(),
+  topic: z.string().min(1),
+  domains: z.array(z.string().min(1)).min(1),
 });
 
 /**
  * Zod schema for SpecificityAnalysis
  */
 export const SpecificityAnalysisSchema = z.object({
-  level: z.enum(['stream', 'domain', 'topic', 'subtopic']),
   classification: z.enum(['specific', 'vague', 'unclear']),
+  matchesTaxonomy: z.boolean(),
   detectedHierarchy: TopicHierarchySchema,
   suggestions: z.array(z.string()).optional(),
 });

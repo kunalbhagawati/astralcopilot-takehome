@@ -1,5 +1,5 @@
 /**
- * Test script for lesson generation
+ * Test script for lesson generation (K-10 Education)
  *
  * Usage:
  * 1. REPL: `bun repl` then copy/paste sections
@@ -8,6 +8,8 @@
  * Prerequisites:
  * - Ollama running: `ollama serve`
  * - Model available: `ollama pull llama3.1`
+ *
+ * Note: Tests use K-10 education topics (ages 5-16, classes 1-10)
  */
 
 import { generateLessonContent, transformLessonGenerationError } from '../lib/services/adapters/lesson-generator-core';
@@ -22,19 +24,17 @@ import { GENERATION_SYSTEM_PROMPT, buildGenerationUserPrompt } from '../lib/prom
 const testBasicGeneration = async () => {
   console.log('=== Test 1: Basic Lesson Generation ===\n');
 
-  // Create mock outline
+  // Create mock outline (K-10 topic)
   const outline: StructuredOutline = {
-    originalText: 'I want to learn TypeScript basics including variables, types, and functions',
+    originalText: 'I want to learn about fractions including adding and subtracting fractions',
     hierarchy: {
-      stream: 'programming',
-      domain: 'web-development',
-      topic: 'TypeScript',
-      subtopic: 'basics',
+      topic: 'Fractions',
+      domains: ['math', 'arithmetic', 'rational-numbers'],
     },
     contentType: 'lesson',
-    requirements: ['Understand basic types', 'Write typed functions', 'Declare variables with types'],
+    requirements: ['Understand what fractions are', 'Learn to add fractions', 'Learn to subtract fractions'],
     metadata: {
-      targetAudience: 'Beginners with JavaScript knowledge',
+      targetAudience: '4th grade students (age 9-10)',
       estimatedDuration: 30,
       difficulty: 'beginner',
     },
@@ -99,17 +99,17 @@ const testCustomConfig = async () => {
   console.log('\n=== Test 3: Custom Configuration ===\n');
 
   const outline: StructuredOutline = {
-    originalText: 'Quick test lesson',
+    originalText: 'Quick test lesson on plant life cycle',
     hierarchy: {
-      stream: 'programming',
-      domain: 'testing',
-      topic: 'unit-testing',
+      topic: 'Plant Life Cycle',
+      domains: ['science', 'biology', 'plants'],
     },
     contentType: 'lesson',
-    requirements: ['Learn testing basics'],
+    requirements: ['Learn stages of plant life cycle', 'Understand seed germination'],
     metadata: {
-      targetAudience: 'Developers',
-      estimatedDuration: 10,
+      targetAudience: '2nd grade students (age 7-8)',
+      estimatedDuration: 15,
+      difficulty: 'beginner',
     },
   };
 

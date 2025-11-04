@@ -299,23 +299,37 @@ export class OllamaClient {
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private repairValidationResponse(parsed: any): void {
-    // Ensure detectedHierarchy exists and has required string fields
+    // Ensure specificity section exists
     if (!parsed.specificity) {
       parsed.specificity = {};
     }
+
+    // Ensure matchesTaxonomy is boolean
+    if (typeof parsed.specificity.matchesTaxonomy !== 'boolean') {
+      parsed.specificity.matchesTaxonomy = false;
+    }
+
+    // Ensure detectedHierarchy exists with new structure {topic, domains[]}
     if (!parsed.specificity.detectedHierarchy) {
       parsed.specificity.detectedHierarchy = {};
     }
 
     const hierarchy = parsed.specificity.detectedHierarchy;
-    if (!hierarchy.stream || typeof hierarchy.stream !== 'string') {
-      hierarchy.stream = 'unknown';
-    }
-    if (!hierarchy.domain || typeof hierarchy.domain !== 'string') {
-      hierarchy.domain = 'unknown';
-    }
+
+    // Repair topic field
     if (!hierarchy.topic || typeof hierarchy.topic !== 'string') {
       hierarchy.topic = 'unknown';
+    }
+
+    // Repair domains field (must be array of strings)
+    if (!Array.isArray(hierarchy.domains)) {
+      hierarchy.domains = [];
+    }
+    // Filter out non-string values
+    hierarchy.domains = hierarchy.domains.filter((d: unknown) => typeof d === 'string');
+    // Ensure at least one domain
+    if (hierarchy.domains.length === 0) {
+      hierarchy.domains = ['unknown'];
     }
 
     // Ensure estimatedComplexity is valid
@@ -357,12 +371,11 @@ export class OllamaClient {
             reasoning: 'Validation model not available',
           },
           specificity: {
-            level: 'stream',
             classification: 'unclear',
+            matchesTaxonomy: false,
             detectedHierarchy: {
-              stream: 'unknown',
-              domain: 'unknown',
               topic: 'unknown',
+              domains: ['unknown'],
             },
           },
           actionability: {
@@ -387,12 +400,11 @@ export class OllamaClient {
             reasoning: 'Outline too long',
           },
           specificity: {
-            level: 'stream',
             classification: 'unclear',
+            matchesTaxonomy: false,
             detectedHierarchy: {
-              stream: 'unknown',
-              domain: 'unknown',
               topic: 'unknown',
+              domains: ['unknown'],
             },
           },
           actionability: {
@@ -415,12 +427,11 @@ export class OllamaClient {
             reasoning: 'Cannot connect to Ollama server',
           },
           specificity: {
-            level: 'stream',
             classification: 'unclear',
+            matchesTaxonomy: false,
             detectedHierarchy: {
-              stream: 'unknown',
-              domain: 'unknown',
               topic: 'unknown',
+              domains: ['unknown'],
             },
           },
           actionability: {
@@ -443,12 +454,11 @@ export class OllamaClient {
         reasoning: 'Validation failed due to technical error',
       },
       specificity: {
-        level: 'stream',
         classification: 'unclear',
+        matchesTaxonomy: false,
         detectedHierarchy: {
-          stream: 'unknown',
-          domain: 'unknown',
           topic: 'unknown',
+          domains: ['unknown'],
         },
       },
       actionability: {
