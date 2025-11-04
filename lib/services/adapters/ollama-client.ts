@@ -296,12 +296,46 @@ export class OllamaClient {
   /**
    * Repair common issues in validation response before schema validation
    * Mutates the parsed object to fix missing or invalid fields
+   * Updated for numeric scores instead of string classifications
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private repairValidationResponse(parsed: any): void {
+    // Ensure intent section exists
+    if (!parsed.intent) {
+      parsed.intent = {};
+    }
+
+    // Repair intent scores (must be numbers 0.0-1.0)
+    if (
+      typeof parsed.intent.positiveScore !== 'number' ||
+      parsed.intent.positiveScore < 0 ||
+      parsed.intent.positiveScore > 1
+    ) {
+      parsed.intent.positiveScore = 0.5; // Default to neutral
+    }
+    if (
+      typeof parsed.intent.negativeScore !== 'number' ||
+      parsed.intent.negativeScore < 0 ||
+      parsed.intent.negativeScore > 1
+    ) {
+      parsed.intent.negativeScore = 0.0; // Default to not negative
+    }
+    if (typeof parsed.intent.confidence !== 'number' || parsed.intent.confidence < 0 || parsed.intent.confidence > 1) {
+      parsed.intent.confidence = 0.5; // Default to moderate confidence
+    }
+
     // Ensure specificity section exists
     if (!parsed.specificity) {
       parsed.specificity = {};
+    }
+
+    // Repair specificityScore (must be number 0.0-1.0)
+    if (
+      typeof parsed.specificity.specificityScore !== 'number' ||
+      parsed.specificity.specificityScore < 0 ||
+      parsed.specificity.specificityScore > 1
+    ) {
+      parsed.specificity.specificityScore = 0.5; // Default to moderate specificity
     }
 
     // Ensure matchesTaxonomy is boolean
@@ -332,10 +366,12 @@ export class OllamaClient {
       hierarchy.domains = ['unknown'];
     }
 
-    // Ensure estimatedComplexity is valid
+    // Ensure actionability section exists
     if (!parsed.actionability) {
       parsed.actionability = {};
     }
+
+    // Ensure estimatedComplexity is valid
     const validComplexities = ['simple', 'moderate', 'complex'];
     if (!validComplexities.includes(parsed.actionability.estimatedComplexity)) {
       parsed.actionability.estimatedComplexity = 'moderate';
@@ -366,12 +402,13 @@ export class OllamaClient {
         return {
           valid: false,
           intent: {
-            classification: 'unclear',
-            confidence: 0,
+            positiveScore: 0.0,
+            negativeScore: 0.0,
+            confidence: 0.0,
             reasoning: 'Validation model not available',
           },
           specificity: {
-            classification: 'unclear',
+            specificityScore: 0.0,
             matchesTaxonomy: false,
             detectedHierarchy: {
               topic: 'unknown',
@@ -395,12 +432,13 @@ export class OllamaClient {
         return {
           valid: false,
           intent: {
-            classification: 'unclear',
-            confidence: 0,
+            positiveScore: 0.0,
+            negativeScore: 0.0,
+            confidence: 0.0,
             reasoning: 'Outline too long',
           },
           specificity: {
-            classification: 'unclear',
+            specificityScore: 0.0,
             matchesTaxonomy: false,
             detectedHierarchy: {
               topic: 'unknown',
@@ -422,12 +460,13 @@ export class OllamaClient {
         return {
           valid: false,
           intent: {
-            classification: 'unclear',
-            confidence: 0,
+            positiveScore: 0.0,
+            negativeScore: 0.0,
+            confidence: 0.0,
             reasoning: 'Cannot connect to Ollama server',
           },
           specificity: {
-            classification: 'unclear',
+            specificityScore: 0.0,
             matchesTaxonomy: false,
             detectedHierarchy: {
               topic: 'unknown',
@@ -449,12 +488,13 @@ export class OllamaClient {
     return {
       valid: false,
       intent: {
-        classification: 'unclear',
-        confidence: 0,
+        positiveScore: 0.0,
+        negativeScore: 0.0,
+        confidence: 0.0,
         reasoning: 'Validation failed due to technical error',
       },
       specificity: {
-        classification: 'unclear',
+        specificityScore: 0.0,
         matchesTaxonomy: false,
         detectedHierarchy: {
           topic: 'unknown',

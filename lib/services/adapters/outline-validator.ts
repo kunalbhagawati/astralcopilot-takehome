@@ -2,6 +2,12 @@ import { ValidationResult } from '@/lib/types/lesson';
 import { isEmpty, isNil } from 'ramda';
 import { OllamaClient, createOllamaClient } from './ollama-client';
 import type { EnhancedValidationResult } from '@/lib/types/validation.types';
+import {
+  VALIDATION_THRESHOLDS,
+  isIntentAcceptable,
+  isSpecificityAcceptable,
+  getThresholdDescriptions,
+} from '../../config/validation-thresholds';
 
 /**
  * Adapter interface for outline validation systems
@@ -71,40 +77,72 @@ export class LLMOutlineValidator implements OutlineValidator {
     // Add specific error messages based on validation aspects
     if (!enhancedResult.valid) {
       const detailedErrors: string[] = [];
+      const thresholds = getThresholdDescriptions();
 
-      // Intent errors
-      if (enhancedResult.intent.classification === 'negative') {
-        detailedErrors.push(`Invalid intent: ${enhancedResult.intent.reasoning}`);
-        if (enhancedResult.intent.flags && enhancedResult.intent.flags.length > 0) {
-          detailedErrors.push(`Concerns: ${enhancedResult.intent.flags.join(', ')}`);
-        }
-      } else if (enhancedResult.intent.classification === 'unclear') {
-        detailedErrors.push(`Unclear intent: ${enhancedResult.intent.reasoning}`);
-      }
+      // Intent errors (threshold-based)
+      const intentAcceptable = isIntentAcceptable(
+        enhancedResult.intent.positiveScore,
+        enhancedResult.intent.negativeScore,
+        enhancedResult.intent.confidence,
+      );
 
-      // Specificity errors
-      if (enhancedResult.specificity.classification === 'vague') {
-        const matchInfo = enhancedResult.specificity.matchesTaxonomy
-          ? `Topic: ${enhancedResult.specificity.detectedHierarchy.topic}`
-          : 'Topic not found in taxonomy';
-
-        detailedErrors.push(`Too vague: Please specify a more specific topic. ${matchInfo}`);
-
-        if (enhancedResult.specificity.suggestions && enhancedResult.specificity.suggestions.length > 0) {
-          detailedErrors.push(`Suggestions: ${enhancedResult.specificity.suggestions.join('; ')}`);
-        }
-      } else if (
-        !enhancedResult.specificity.matchesTaxonomy &&
-        enhancedResult.specificity.classification === 'specific'
-      ) {
-        // Topic is specific but doesn't match taxonomy
-        detailedErrors.push(`Topic "${enhancedResult.specificity.detectedHierarchy.topic}" not found in our taxonomy.`);
-        if (enhancedResult.specificity.suggestions && enhancedResult.specificity.suggestions.length > 0) {
-          detailedErrors.push(`Did you mean: ${enhancedResult.specificity.suggestions.join(', ')}?`);
+      if (!intentAcceptable) {
+        if (enhancedResult.intent.negativeScore > VALIDATION_THRESHOLDS.intent.maxNegativeScore) {
+          // High negative score - reject
+          detailedErrors.push(
+            `Invalid intent (negativeScore: ${(enhancedResult.intent.negativeScore * 100).toFixed(0)}%): ${enhancedResult.intent.reasoning}`,
+          );
+          if (enhancedResult.intent.flags && enhancedResult.intent.flags.length > 0) {
+            detailedErrors.push(`Concerns: ${enhancedResult.intent.flags.join(', ')}`);
+          }
+        } else if (enhancedResult.intent.positiveScore < VALIDATION_THRESHOLDS.intent.minPositiveScore) {
+          // Low positive score - unclear/ambiguous
+          detailedErrors.push(
+            `Unclear intent (positiveScore: ${(enhancedResult.intent.positiveScore * 100).toFixed(0)}%, ${thresholds.intent.positive}): ${enhancedResult.intent.reasoning}`,
+          );
+        } else if (enhancedResult.intent.confidence < VALIDATION_THRESHOLDS.intent.minConfidence) {
+          // Low confidence
+          detailedErrors.push(
+            `Low confidence in intent assessment (${(enhancedResult.intent.confidence * 100).toFixed(0)}%, ${thresholds.intent.confidence})`,
+          );
         }
       }
 
-      // Actionability errors
+      // Specificity errors (threshold-based)
+      const specificityAcceptable = isSpecificityAcceptable(
+        enhancedResult.specificity.specificityScore,
+        enhancedResult.specificity.matchesTaxonomy,
+      );
+
+      if (!specificityAcceptable) {
+        if (enhancedResult.specificity.specificityScore < VALIDATION_THRESHOLDS.specificity.minScore) {
+          // Low specificity score
+          const matchInfo = enhancedResult.specificity.matchesTaxonomy
+            ? `Detected: "${enhancedResult.specificity.detectedHierarchy.topic}"`
+            : 'Topic not found in taxonomy';
+
+          detailedErrors.push(
+            `Too vague (specificityScore: ${(enhancedResult.specificity.specificityScore * 100).toFixed(0)}%, ${thresholds.specificity.score}): ${matchInfo}`,
+          );
+
+          if (enhancedResult.specificity.suggestions && enhancedResult.specificity.suggestions.length > 0) {
+            detailedErrors.push(`Suggestions: ${enhancedResult.specificity.suggestions.join('; ')}`);
+          }
+        } else if (
+          !enhancedResult.specificity.matchesTaxonomy &&
+          VALIDATION_THRESHOLDS.specificity.requireTaxonomyMatch
+        ) {
+          // Specific but not in taxonomy
+          detailedErrors.push(
+            `Topic "${enhancedResult.specificity.detectedHierarchy.topic}" not found in our taxonomy (${thresholds.specificity.taxonomy})`,
+          );
+          if (enhancedResult.specificity.suggestions && enhancedResult.specificity.suggestions.length > 0) {
+            detailedErrors.push(`Did you mean: ${enhancedResult.specificity.suggestions.join(', ')}?`);
+          }
+        }
+      }
+
+      // Actionability errors (boolean-only)
       if (!enhancedResult.actionability.actionable) {
         detailedErrors.push('Not actionable: Insufficient information to generate content');
         if (enhancedResult.actionability.missingInfo && enhancedResult.actionability.missingInfo.length > 0) {

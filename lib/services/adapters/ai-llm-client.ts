@@ -287,9 +287,6 @@ export const getAILLMClient = (): AILLMClient => {
   switch (provider) {
     case 'ollama':
       return new OllamaAILLMClient();
-    case 'openai':
-      // Future: return new OpenAILLMClient();
-      throw new Error('OpenAI provider not yet implemented');
     default:
       throw new Error(`Unknown LLM provider: ${provider}`);
   }

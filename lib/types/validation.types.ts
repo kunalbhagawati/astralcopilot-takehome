@@ -2,9 +2,11 @@
  * Enhanced validation types for LLM-based outline validation
  *
  * These types support multi-stage validation:
- * 1. Intent classification (positive/negative/unclear)
- * 2. Specificity analysis (stream/domain/topic hierarchy)
- * 3. Actionability checks (content type, complexity)
+ * 1. Intent classification (numeric scores: positiveScore, negativeScore)
+ * 2. Specificity analysis (numeric score: specificityScore, boolean: matchesTaxonomy)
+ * 3. Actionability checks (boolean: actionable, content type, complexity)
+ *
+ * Philosophy: LLM provides numeric scores (0.0-1.0), server applies thresholds
  */
 
 import { z } from 'zod';
@@ -25,13 +27,16 @@ export interface TopicHierarchy {
 /**
  * Intent classification result
  * Determines if the user has positive learning intent
+ * Uses numeric scores instead of string classifications
  */
 export interface IntentClassification {
-  /** Classification result */
-  classification: 'positive' | 'negative' | 'unclear';
-  /** Confidence score 0.0 to 1.0 */
+  /** Probability this is genuine positive educational intent (0.0-1.0) */
+  positiveScore: number;
+  /** Probability this has harmful/negative intent (0.0-1.0) */
+  negativeScore: number;
+  /** Confidence in the assessment (0.0-1.0) */
   confidence: number;
-  /** Explanation for the classification */
+  /** Explanation for the scores */
   reasoning: string;
   /** Optional flags for potential issues */
   flags?: string[];
@@ -40,15 +45,16 @@ export interface IntentClassification {
 /**
  * Specificity analysis result
  * Checks if the outline is specific enough for lesson generation
+ * Uses numeric score instead of string classification
  */
 export interface SpecificityAnalysis {
-  /** Classification of specificity */
-  classification: 'specific' | 'vague' | 'unclear';
-  /** Whether detected topic matches predefined taxonomy */
+  /** Specificity score: 1.0 = very specific, 0.0 = very vague (0.0-1.0) */
+  specificityScore: number;
+  /** Whether detected topic matches predefined taxonomy (boolean yes/no) */
   matchesTaxonomy: boolean;
   /** Detected topic hierarchy */
   detectedHierarchy: TopicHierarchy;
-  /** Suggestions for improvement if vague or not matching taxonomy */
+  /** Suggestions for improvement if low score or not matching taxonomy */
   suggestions?: string[];
 }
 
@@ -116,9 +122,11 @@ export interface StructuredOutline {
 /**
  * Zod schema for IntentClassification
  * Used for structured output validation from LLM
+ * Validates numeric scores instead of string enums
  */
 export const IntentClassificationSchema = z.object({
-  classification: z.enum(['positive', 'negative', 'unclear']),
+  positiveScore: z.number().min(0).max(1),
+  negativeScore: z.number().min(0).max(1),
   confidence: z.number().min(0).max(1),
   reasoning: z.string(),
   flags: z.array(z.string()).optional(),
@@ -134,9 +142,10 @@ export const TopicHierarchySchema = z.object({
 
 /**
  * Zod schema for SpecificityAnalysis
+ * Validates numeric score instead of string enum
  */
 export const SpecificityAnalysisSchema = z.object({
-  classification: z.enum(['specific', 'vague', 'unclear']),
+  specificityScore: z.number().min(0).max(1),
   matchesTaxonomy: z.boolean(),
   detectedHierarchy: TopicHierarchySchema,
   suggestions: z.array(z.string()).optional(),
