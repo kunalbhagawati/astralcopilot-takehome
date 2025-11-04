@@ -228,6 +228,7 @@ const runTests = async (): Promise<void> => {
 const testStructuring = async (): Promise<void> => {
   console.log('\n\n🔧 Testing outline structuring...\n');
   console.log('='.repeat(80));
+  console.log('💡 Note: Retries are normal - LLM may need multiple attempts to match schema\n');
 
   const ollamaClient = createOllamaClient();
   const testOutline = 'Create a 10-question quiz on photosynthesis for 5th graders';

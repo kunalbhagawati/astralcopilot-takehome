@@ -263,12 +263,21 @@ export class OllamaClient {
    */
   private async retryWithBackoff<T>(fn: () => Promise<T>, operationName: string): Promise<T> {
     let lastError: Error | undefined;
+    let hadRetry = false;
 
     for (let attempt = 0; attempt < this.config.maxRetries; attempt++) {
       try {
-        return await fn();
+        const result = await fn();
+
+        // If we had to retry but succeeded, log success
+        if (hadRetry && attempt > 0) {
+          console.log(`✅ ${operationName} succeeded after ${attempt + 1} attempts`);
+        }
+
+        return result;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
+        hadRetry = true;
 
         // Don't retry on certain errors
         if (lastError.message.includes('model') && lastError.message.includes('not found')) {
@@ -279,13 +288,23 @@ export class OllamaClient {
           throw lastError; // Context too long - no point retrying
         }
 
-        // Log retry attempt
-        console.warn(`${operationName} attempt ${attempt + 1}/${this.config.maxRetries} failed:`, lastError.message);
-
-        // Wait before retrying (exponential backoff)
+        // Log retry attempt with user-friendly formatting
         if (attempt < this.config.maxRetries - 1) {
+          // Still have retries left - show as info, not warning
+          console.log(
+            `⚠️  ${operationName} validation failed (attempt ${attempt + 1}/${this.config.maxRetries}), retrying...`,
+          );
+
+          // If it looks like a Zod error, show helpful message instead of raw JSON
+          if (lastError.message.includes('code') && lastError.message.includes('path')) {
+            console.log('   💡 LLM output did not match schema, will retry with corrected generation');
+          }
+
           const delay = this.config.retryDelay * Math.pow(2, attempt);
           await new Promise((resolve) => setTimeout(resolve, delay));
+        } else {
+          // Last retry failed - show as warning with full error
+          console.warn(`❌ ${operationName} failed after ${this.config.maxRetries} attempts:`, lastError.message);
         }
       }
     }
