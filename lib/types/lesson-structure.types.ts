@@ -9,6 +9,8 @@
  * - Structured for rendering in the UI
  */
 
+import { z } from 'zod';
+
 /**
  * Metadata about the lesson
  */
@@ -103,6 +105,38 @@ export interface LessonContent {
    */
   sections: LessonSection[];
 }
+
+/**
+ * Zod schema for LessonMetadata
+ */
+export const LessonMetadataSchema = z.object({
+  title: z.string().min(1),
+  topics: z.array(z.string()).min(1),
+  estimatedDuration: z.number().positive(),
+  description: z.string().optional(),
+  difficulty: z.enum(['beginner', 'intermediate', 'advanced']).optional(),
+});
+
+/**
+ * Zod schema for LessonSection
+ */
+export const LessonSectionSchema = z.object({
+  id: z.string().min(1),
+  type: z.enum(['introduction', 'content', 'exercise', 'quiz', 'summary']),
+  title: z.string().min(1),
+  content: z.string().min(1),
+  order: z.number().int().nonnegative(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+/**
+ * Zod schema for LessonContent
+ * Used by Vercel AI SDK's generateObject() for structured output validation
+ */
+export const LessonContentSchema = z.object({
+  metadata: LessonMetadataSchema,
+  sections: z.array(LessonSectionSchema).min(1),
+});
 
 /**
  * Validation rules for lesson content

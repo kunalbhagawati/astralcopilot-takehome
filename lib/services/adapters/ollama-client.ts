@@ -1,18 +1,20 @@
 /**
  * Ollama client adapter for LLM interactions
- * Using Ollama v0.6+ - https://ollama.com/
+ * Using Vercel AI SDK v5.0+ - https://ai-sdk.dev/
+ * Using Ollama v0.6+ (legacy methods) - https://ollama.com/
  *
  * Provides structured output generation for:
- * - Outline validation (intent, specificity, actionability)
- * - Outline structuring (converting text to StructuredOutline)
- * - Lesson generation (creating LessonContent)
- * - Quality validation (checking generated content)
+ * - Outline validation (intent, specificity, actionability) [Legacy Ollama]
+ * - Outline structuring (converting text to StructuredOutline) [Legacy Ollama]
+ * - Lesson generation (creating LessonContent) [Vercel AI SDK - POC]
+ * - Quality validation (checking generated content) [Legacy Ollama]
  */
 
 import { Ollama } from 'ollama';
 import type { EnhancedValidationResult, StructuredOutline } from '../../types/validation.types';
 import type { LessonContent } from '../../types/lesson-structure.types';
 import { EnhancedValidationResultSchema, StructuredOutlineSchema } from '../../types/validation.types';
+import { LessonContentSchema } from '../../types/lesson-structure.types';
 import { VALIDATION_SYSTEM_PROMPT, buildValidationUserPrompt } from '../../prompts/validation-prompts';
 import {
   GENERATION_SYSTEM_PROMPT,
@@ -20,6 +22,8 @@ import {
   buildQualityValidationPrompt,
   buildOutlineStructuringPrompt,
 } from '../../prompts/generation-prompts';
+import { createAIModel } from './llm-config';
+import { generateLessonContent, transformLessonGenerationError } from './lesson-generator-core';
 
 /**
  * Configuration for Ollama client
@@ -147,35 +151,31 @@ export class OllamaClient {
 
   /**
    * Generate lesson content from a structured outline
+   * Using Vercel AI SDK's generateObject() for structured output generation
+   *
+   * Thin wrapper around generateLessonContent() that provides:
+   * - Configuration from OllamaClient instance
+   * - User-friendly error messages
+   *
+   * For direct testing or REPL usage, use generateLessonContent() from lesson-generator-core.ts
    */
   async generateLesson(structuredOutline: StructuredOutline): Promise<LessonContent> {
-    return await this.retryWithBackoff(async () => {
-      const response = await this.client.chat({
-        model: this.config.generationModel,
-        messages: [
-          { role: 'system', content: GENERATION_SYSTEM_PROMPT },
-          {
-            role: 'user',
-            content: buildGenerationUserPrompt(structuredOutline),
-          },
-        ],
-        format: 'json',
-        options: {
-          temperature: this.config.generationTemperature,
-        },
+    try {
+      // Create model and delegate to pure function
+      const model = createAIModel(this.config.generationModel);
+
+      return await generateLessonContent(structuredOutline, {
+        model,
+        systemPrompt: GENERATION_SYSTEM_PROMPT,
+        buildUserPrompt: buildGenerationUserPrompt,
+        schema: LessonContentSchema,
+        temperature: this.config.generationTemperature,
       });
-
-      // Parse response
-      const content = response.message.content;
-      const parsed = JSON.parse(content);
-
-      // Basic validation (detailed validation done by LessonContentValidator)
-      if (!parsed.metadata || !parsed.sections || !Array.isArray(parsed.sections)) {
-        throw new Error('Invalid lesson structure: missing metadata or sections');
-      }
-
-      return parsed as LessonContent;
-    }, 'Lesson generation');
+    } catch (error) {
+      // Transform error to user-friendly message
+      const errorInfo = transformLessonGenerationError(error, this.config.generationModel, this.config.host);
+      throw new Error(errorInfo.message);
+    }
   }
 
   /**
