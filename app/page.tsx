@@ -39,7 +39,10 @@ export default function Home() {
         body: JSON.stringify({ outline }),
       });
 
+      console.log('Response status:', response.status);
+
       const data = await response.json();
+      console.log('Response data:', data);
 
       if (!response.ok) {
         throw new Error(data.error || 'Failed to generate lesson');
@@ -51,6 +54,7 @@ export default function Home() {
       // Store the current outline request ID to display its lessons
       setCurrentOutlineRequestId(data.outlineRequest.id);
     } catch (err) {
+      console.error('Error submitting outline:', err);
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
       setIsSubmitting(false);
