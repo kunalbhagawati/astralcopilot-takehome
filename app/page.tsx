@@ -16,7 +16,7 @@ export default function Home() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [currentOutlineRequestId, setCurrentOutlineRequestId] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,8 +48,8 @@ export default function Home() {
       setSuccess('Lesson generation started!');
       setOutline('');
 
-      // Trigger table refresh
-      setRefreshKey((prev) => prev + 1);
+      // Store the current outline request ID to display its lessons
+      setCurrentOutlineRequestId(data.outlineRequest.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
@@ -106,15 +106,17 @@ export default function Home() {
           </Card>
 
           {/* Lessons Table */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Your Lessons</CardTitle>
-              <CardDescription>View and manage your generated lessons</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <LessonsTable key={refreshKey} onLessonClick={handleLessonClick} />
-            </CardContent>
-          </Card>
+          {currentOutlineRequestId && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Your Lessons</CardTitle>
+                <CardDescription>View and manage your generated lessons</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <LessonsTable outlineRequestId={currentOutlineRequestId} onLessonClick={handleLessonClick} />
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
 
