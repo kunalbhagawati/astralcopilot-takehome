@@ -16,7 +16,7 @@ export default function Home() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [currentOutlineRequestId, setCurrentOutlineRequestId] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,7 +39,10 @@ export default function Home() {
         body: JSON.stringify({ outline }),
       });
 
+      console.log('Response status:', response.status);
+
       const data = await response.json();
+      console.log('Response data:', data);
 
       if (!response.ok) {
         throw new Error(data.error || 'Failed to generate lesson');
@@ -48,9 +51,10 @@ export default function Home() {
       setSuccess('Lesson generation started!');
       setOutline('');
 
-      // Trigger table refresh
-      setRefreshKey((prev) => prev + 1);
+      // Store the current outline request ID to display its lessons
+      setCurrentOutlineRequestId(data.outlineRequest.id);
     } catch (err) {
+      console.error('Error submitting outline:', err);
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
       setIsSubmitting(false);
@@ -106,15 +110,17 @@ export default function Home() {
           </Card>
 
           {/* Lessons Table */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Your Lessons</CardTitle>
-              <CardDescription>View and manage your generated lessons</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <LessonsTable key={refreshKey} onLessonClick={handleLessonClick} />
-            </CardContent>
-          </Card>
+          {currentOutlineRequestId && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Your Lessons</CardTitle>
+                <CardDescription>View and manage your generated lessons</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <LessonsTable outlineRequestId={currentOutlineRequestId} onLessonClick={handleLessonClick} />
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
 
