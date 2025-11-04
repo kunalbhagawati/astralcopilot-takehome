@@ -1,9 +1,9 @@
+import { ValidationResult } from '@/lib/types/lesson';
 import {
   LessonContent,
   LessonContentValidationRules,
   DEFAULT_LESSON_VALIDATION_RULES,
 } from '@/lib/types/lesson-structure.types';
-import { ValidationResult } from '@/lib/types/lesson';
 
 /**
  * Interface for lesson content validators

@@ -229,9 +229,9 @@ Remember: Your goal is to create educational content that truly helps learners u
  * Formats the structured outline and requests lesson content
  */
 export const buildGenerationUserPrompt = (structuredOutline: StructuredOutline): string => {
-  const { hierarchy, contentType, requirements, metadata, originalText } = structuredOutline;
+  const { hierarchy, requirements, metadata, originalText } = structuredOutline;
 
-  return `Generate a ${contentType} based on the following structured outline:
+  return `Generate educational content based on the following structured outline:
 
 ORIGINAL REQUEST:
 "${originalText}"
@@ -239,8 +239,6 @@ ORIGINAL REQUEST:
 TOPIC:
 - Topic: ${hierarchy.topic}
 - Related Domains: ${hierarchy.domains.join(', ')}
-
-CONTENT TYPE: ${contentType}
 
 REQUIREMENTS:
 ${requirements.map((req, i) => `${i + 1}. ${req}`).join('\n')}
@@ -252,11 +250,12 @@ ${metadata.estimatedDuration ? `- Estimated Duration: ${metadata.estimatedDurati
 ${metadata.itemCount ? `- Number of Items: ${metadata.itemCount}` : ''}
 
 INSTRUCTIONS:
-1. Create a complete ${contentType} covering the topic "${hierarchy.topic}"
-2. Follow the structure defined in your system prompt
-3. Ensure all requirements above are met
-4. Match the difficulty level ${metadata.difficulty ? `(${metadata.difficulty})` : '(determine appropriate level)'}
-${metadata.itemCount ? `5. Include exactly ${metadata.itemCount} ${contentType === 'quiz' ? 'questions' : 'items'}` : ''}
+1. Create multimodal teaching content covering the topic "${hierarchy.topic}"
+2. Determine the best structure (explanations, examples, questions, exercises, etc.)
+3. Follow the structure defined in your system prompt
+4. Ensure all requirements above are met
+5. Match the difficulty level ${metadata.difficulty ? `(${metadata.difficulty})` : '(determine appropriate level)'}
+${metadata.itemCount ? `6. Include approximately ${metadata.itemCount} content blocks/items` : ''}
 
 Return ONLY the JSON object for the LessonContent structure, no additional text.`;
 };
@@ -322,7 +321,6 @@ Return JSON matching this structure:
     "topic": "exact topic name from validation (string)",
     "domains": ["array", "of", "domain", "strings"]
   },
-  "contentType": "quiz" | "lesson" | "tutorial" | "exercise",
   "requirements": ["array of requirements"],
   "metadata": {
     "difficulty": "optional: beginner | intermediate | advanced",

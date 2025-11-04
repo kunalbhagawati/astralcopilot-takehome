@@ -1,6 +1,6 @@
 import { ValidationResult } from '@/lib/types/lesson';
 import { isEmpty, isNil } from 'ramda';
-import { OllamaClient, createOllamaClient } from './ollama-client';
+import { LLMClient, createLLMClient } from './llm-client';
 import type { EnhancedValidationResult } from '@/lib/types/validation.types';
 import {
   VALIDATION_THRESHOLDS,
@@ -45,14 +45,15 @@ export class SimpleOutlineValidator implements OutlineValidator {
 }
 
 /**
- * LLM-based outline validator using Ollama
+ * LLM-based outline validator
  * Validates intent, specificity, and actionability using LLM
+ * Provider-agnostic (works with any LLM via LLMClient)
  */
 export class LLMOutlineValidator implements OutlineValidator {
-  private ollamaClient: OllamaClient;
+  private client: LLMClient;
 
-  constructor(ollamaClient?: OllamaClient) {
-    this.ollamaClient = ollamaClient || createOllamaClient();
+  constructor(client?: LLMClient) {
+    this.client = client || createLLMClient();
   }
 
   async validate(outline: string): Promise<EnhancedOutlineValidationResult> {
@@ -65,7 +66,7 @@ export class LLMOutlineValidator implements OutlineValidator {
     }
 
     // LLM-based validation for intent, specificity, and actionability
-    const enhancedResult = await this.ollamaClient.validateOutline(outline);
+    const enhancedResult = await this.client.validateOutline(outline);
 
     // Convert enhanced result to simple ValidationResult format
     const result: EnhancedOutlineValidationResult = {

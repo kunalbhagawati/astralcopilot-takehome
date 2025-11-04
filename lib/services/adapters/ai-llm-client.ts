@@ -237,37 +237,37 @@ Understanding ${topic.toLowerCase()} is essential for building robust solutions.
 }
 
 /**
- * Ollama-based implementation of AILLMClient
- * Uses Ollama for real LLM-based lesson generation and validation
+ * LLM-based implementation of AILLMClient
+ * Uses LLMClient (provider-agnostic) for real LLM-based lesson generation and validation
  */
 export class OllamaAILLMClient implements AILLMClient {
   readonly provider = 'ollama' as const;
-  private ollamaClient: import('./ollama-client').OllamaClient;
+  private client: import('./llm-client').LLMClient;
 
-  constructor(ollamaClient?: import('./ollama-client').OllamaClient) {
-    if (ollamaClient) {
-      this.ollamaClient = ollamaClient;
+  constructor(client?: import('./llm-client').LLMClient) {
+    if (client) {
+      this.client = client;
     } else {
       // Dynamic import to avoid circular dependencies
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { createOllamaClient } = require('./ollama-client');
-      this.ollamaClient = createOllamaClient();
+      const { createLLMClient } = require('./llm-client');
+      this.client = createLLMClient();
     }
   }
 
   async generateLesson(outline: string): Promise<LessonContent> {
     // First, structure the outline
-    const structuredOutline = await this.ollamaClient.structureOutline(outline);
+    const structuredOutline = await this.client.structureOutline(outline);
 
     // Then generate lesson from structured outline
-    const lessonContent = await this.ollamaClient.generateLesson(structuredOutline);
+    const lessonContent = await this.client.generateLesson(structuredOutline);
 
     return lessonContent;
   }
 
   async validateLesson(content: LessonContent): Promise<ValidationResult> {
     // Use LLM to validate quality
-    const qualityResult = await this.ollamaClient.validateLessonQuality(content);
+    const qualityResult = await this.client.validateLessonQuality(content);
 
     return {
       valid: qualityResult.valid,

@@ -31,7 +31,6 @@ const testBasicGeneration = async () => {
       topic: 'Fractions',
       domains: ['math', 'arithmetic', 'rational-numbers'],
     },
-    contentType: 'lesson',
     requirements: ['Understand what fractions are', 'Learn to add fractions', 'Learn to subtract fractions'],
     metadata: {
       targetAudience: '4th grade students (age 9-10)',
@@ -104,7 +103,6 @@ const testCustomConfig = async () => {
       topic: 'Plant Life Cycle',
       domains: ['science', 'biology', 'plants'],
     },
-    contentType: 'lesson',
     requirements: ['Learn stages of plant life cycle', 'Understand seed germination'],
     metadata: {
       targetAudience: '2nd grade students (age 7-8)',

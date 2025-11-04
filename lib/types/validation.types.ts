@@ -60,13 +60,15 @@ export interface SpecificityAnalysis {
 
 /**
  * Actionability check result
- * Determines if outline is actionable for lesson generation
+ * Determines if outline is actionable for generating structured content blocks
+ *
+ * This system produces actionables (descriptions of teaching content blocks).
+ * A separate downstream system will render these as actual JSX/HTML.
+ * The LLM determines the best multimodal structure for teaching.
  */
 export interface ActionabilityCheck {
   /** Is the outline actionable? */
   actionable: boolean;
-  /** Detected content type */
-  contentType: 'quiz' | 'lesson' | 'tutorial' | 'exercise' | 'unknown';
   /** Estimated complexity */
   estimatedComplexity: 'simple' | 'moderate' | 'complex';
   /** List of identified requirements */
@@ -94,16 +96,17 @@ export interface EnhancedValidationResult {
 }
 
 /**
- * Structured outline ready for lesson generation
+ * Structured outline ready for actionable block generation
  * Result of parsing and validating an outline
+ *
+ * This structure feeds into actionable generation, which produces
+ * descriptions of teaching content blocks (not rendered code).
  */
 export interface StructuredOutline {
   /** Original text from user */
   originalText: string;
   /** Validated topic hierarchy */
   hierarchy: TopicHierarchy;
-  /** Content type */
-  contentType: 'quiz' | 'lesson' | 'tutorial' | 'exercise';
   /** List of requirements extracted from outline */
   requirements: string[];
   /** Additional metadata */
@@ -156,7 +159,6 @@ export const SpecificityAnalysisSchema = z.object({
  */
 export const ActionabilityCheckSchema = z.object({
   actionable: z.boolean(),
-  contentType: z.enum(['quiz', 'lesson', 'tutorial', 'exercise', 'unknown']),
   estimatedComplexity: z.enum(['simple', 'moderate', 'complex']),
   requirements: z.array(z.string()),
   missingInfo: z.array(z.string()).optional(),
@@ -180,7 +182,6 @@ export const EnhancedValidationResultSchema = z.object({
 export const StructuredOutlineSchema = z.object({
   originalText: z.string(),
   hierarchy: TopicHierarchySchema,
-  contentType: z.enum(['quiz', 'lesson', 'tutorial', 'exercise']),
   requirements: z.array(z.string()),
   metadata: z.object({
     difficulty: z.enum(['beginner', 'intermediate', 'advanced']).optional(),
@@ -188,4 +189,28 @@ export const StructuredOutlineSchema = z.object({
     estimatedDuration: z.number().optional(),
     itemCount: z.number().optional(),
   }),
+});
+
+/**
+ * Quality validation result for generated lesson content
+ */
+export interface QualityValidationResult {
+  /** Is the generated content valid? */
+  valid: boolean;
+  /** List of validation errors */
+  errors: string[];
+  /** Suggestions for improvement */
+  suggestions: string[];
+  /** Overall quality score (0.0-1.0) */
+  qualityScore: number;
+}
+
+/**
+ * Zod schema for QualityValidationResult
+ */
+export const QualityValidationResultSchema = z.object({
+  valid: z.boolean(),
+  errors: z.array(z.string()),
+  suggestions: z.array(z.string()),
+  qualityScore: z.number().min(0).max(1),
 });

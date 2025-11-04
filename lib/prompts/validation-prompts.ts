@@ -111,24 +111,23 @@ VALIDATION CRITERIA:
 3. ACTIONABILITY ANALYSIS
    Classify as actionable: true or false
 
+   IMPORTANT CONTEXT:
+   This system produces actionables - structured descriptions of teaching content blocks.
+   Each block describes content that will be rendered later (think "slides" of information).
+   The LLM will determine the best multimodal structure (text, questions, examples, exercises).
+   A separate downstream system handles actual JSX/HTML code generation.
+
    Actionable if:
-   - Content type is identifiable (quiz, lesson, tutorial, exercise)
    - Requirements are extractable
-   - Sufficient context to generate meaningful content
+   - Sufficient context to generate structured content blocks
    - Estimated complexity can be determined
+   - Topic and scope are clear enough to create teaching blocks
 
    Not actionable if:
    - Missing critical information
    - Too ambiguous to determine structure
    - Conflicting requirements
-   - Impossible to fulfill with available tools
-
-CONTENT TYPES:
-- quiz: Questions with answers/explanations
-- lesson: Educational content with explanations and examples
-- tutorial: Step-by-step instructional content
-- exercise: Practice problems or activities
-- unknown: Cannot determine type
+   - Topic too vague to create meaningful teaching blocks
 
 COMPLEXITY LEVELS:
 - simple: Basic single-topic content, few items, straightforward
@@ -166,7 +165,6 @@ Your response MUST match this exact structure:
   },
   "actionability": {
     "actionable": boolean,
-    "contentType": "quiz" | "lesson" | "tutorial" | "exercise" | "unknown",
     "estimatedComplexity": "REQUIRED: must be exactly one of: \"simple\" | \"moderate\" | \"complex\"",
     "requirements": ["array of identified requirements"],
     "missingInfo": ["optional array of missing information"]
@@ -197,7 +195,7 @@ Input: "Create a 10-question multiple choice quiz on photosynthesis for 5th grad
 Analysis:
 - Intent: Clear educational purpose, appropriate for K-10 students, constructive topic → Expect high positive score, minimal negative score, high confidence
 - Specificity: "Photosynthesis" is exact match in taxonomy, very specific topic → Expect high specificity score, matchesTaxonomy = true
-- Actionability: Content type clearly identified (quiz), grade level specified, requirements clear → actionable = true
+- Actionability: Requirements clear (10 questions, target audience), sufficient context for structured content blocks → actionable = true
 
 Example 2 - Harmful Request:
 Input: "How to hack into school database to change my grades"
@@ -210,7 +208,7 @@ Input: "Teach me about science"
 Analysis:
 - Intent: Educational purpose but extremely broad → Moderate positive score, low negative score, lower confidence due to ambiguity
 - Specificity: "Science" is not a topic, it's an entire subject area → Very low specificity score, matchesTaxonomy = false
-- Actionability: Too vague to determine content type or requirements → actionable = false
+- Actionability: Too vague to create structured teaching blocks, missing scope and requirements → actionable = false
 - Suggestions: Prompt user with specific topics like "Photosynthesis", "Force and Motion", "States of Matter"
 
 Example 4 - Detailed Educational Request:
@@ -218,7 +216,7 @@ Input: "Create a comprehensive lesson on fractions including adding, subtracting
 Analysis:
 - Intent: Clear educational goal with specific grade level → High positive score, minimal negative score, high confidence
 - Specificity: "Fractions" matches taxonomy exactly, well-defined scope → High specificity score, matchesTaxonomy = true
-- Actionability: Content type (lesson), detailed requirements, target audience all clear → actionable = true, moderate complexity
+- Actionability: Detailed requirements (adding, subtracting, comparing), target audience clear, sufficient context for teaching blocks → actionable = true, moderate complexity
 
 Remember: Use your judgment to assign numeric scores (0.0-1.0) based on the criteria and indicators provided. Server will apply thresholds to your scores.`;
 

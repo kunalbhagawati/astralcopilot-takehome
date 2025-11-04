@@ -9,7 +9,8 @@
  * - Model available: `ollama pull llama3.1`
  */
 
-import { createOllamaClient } from '../lib/services/adapters/ollama-client';
+import { createLLMClient } from '../lib/services/adapters/llm-client';
+import { createOllamaHealthCheck } from '../lib/utils/ollama-health-check';
 import { EnhancedValidationResultSchema } from '../lib/types/validation.types';
 import { VALIDATION_THRESHOLDS } from '../lib/config/validation-thresholds';
 
@@ -65,11 +66,11 @@ const runTests = async (): Promise<void> => {
   console.log('🚀 Starting Outline Validation Tests (K-10 Education)\n');
   console.log('='.repeat(80));
 
-  const ollamaClient = createOllamaClient();
+  // Check Ollama health and model availability
+  const healthCheck = createOllamaHealthCheck();
 
-  // Check Ollama health first
   console.log('\n📡 Checking Ollama connection...');
-  const health = await ollamaClient.checkHealth();
+  const health = await healthCheck.checkHealth();
 
   if (!health.available) {
     console.error('❌ Ollama is not available. Please ensure Ollama is running.');
@@ -83,12 +84,15 @@ const runTests = async (): Promise<void> => {
   // Ensure required models are available
   console.log('\n📦 Ensuring required models are available...');
   try {
-    await ollamaClient.ensureModel('llama3.1');
+    await healthCheck.ensureModel('llama3.1');
     console.log('✅ llama3.1 model is ready');
   } catch (error) {
     console.error('❌ Failed to ensure model availability:', error);
     process.exit(1);
   }
+
+  // Create LLM client for tests
+  const client = createLLMClient();
 
   console.log('\n' + '='.repeat(80));
   console.log('🧪 Running validation tests...\n');
@@ -108,7 +112,7 @@ const runTests = async (): Promise<void> => {
     console.log();
 
     try {
-      const result = await ollamaClient.validateOutline(test.outline);
+      const result = await client.validateOutline(test.outline);
 
       // Validate against schema
       try {
@@ -160,7 +164,6 @@ const runTests = async (): Promise<void> => {
       // Actionability
       console.log('   ⚙️  Actionability:');
       console.log(`      Status:     ${result.actionability.actionable ? '✓ Actionable' : '✗ Not actionable'}`);
-      console.log(`      Type:       ${result.actionability.contentType}`);
       console.log(`      Complexity: ${result.actionability.estimatedComplexity}`);
       if (result.actionability.requirements.length > 0) {
         console.log(`      Requirements: ${result.actionability.requirements.join(', ')}`);
@@ -230,13 +233,13 @@ const testStructuring = async (): Promise<void> => {
   console.log('='.repeat(80));
   console.log('💡 Note: Retries are normal - LLM may need multiple attempts to match schema\n');
 
-  const ollamaClient = createOllamaClient();
+  const client = createLLMClient();
   const testOutline = 'Create a 10-question quiz on photosynthesis for 5th graders';
 
   console.log(`Outline: "${testOutline}"\n`);
 
   try {
-    const structured = await ollamaClient.structureOutline(testOutline);
+    const structured = await client.structureOutline(testOutline);
 
     console.log('✅ Structured outline:');
     console.log(JSON.stringify(structured, null, 2));
