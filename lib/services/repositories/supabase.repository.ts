@@ -8,23 +8,26 @@
 import { createClient } from '@/lib/supabase/server';
 import type { Lesson, LessonStatus } from '@/lib/types/lesson';
 import type { LessonContent } from '@/lib/types/lesson-structure.types';
-import type { LessonRepository } from './lesson.repository';
 import { logger } from '../logger';
+import type { LessonRepository } from './lesson.repository';
 
 /**
  * Supabase implementation of LessonRepository
+ *
+ * Uses lesson_status_record table for status tracking (separate from lesson table).
  */
 export class SupabaseLessonRepository implements LessonRepository {
   /**
    * Create a new lesson with content
+   *
+   * Note: Status is NOT stored on lesson table. Use createStatusRecord() separately.
    */
-  async create(content: LessonContent, status: LessonStatus): Promise<Lesson> {
+  async create(content: LessonContent): Promise<Lesson> {
     const supabase = await createClient();
 
     const { data, error } = await supabase
       .from('lesson')
       .insert({
-        status,
         content,
       })
       .select()
@@ -39,21 +42,32 @@ export class SupabaseLessonRepository implements LessonRepository {
   }
 
   /**
-   * Update lesson status
+   * Create status record in lesson_status_record
+   *
+   * Records each status transition with optional metadata.
+   * Status changes are append-only for audit trail.
    */
-  async updateStatus(id: string, status: LessonStatus, error?: { message: string }): Promise<void> {
+  async createStatusRecord(lessonId: string, status: LessonStatus, metadata?: unknown): Promise<void> {
     const supabase = await createClient();
 
-    const updateData: { status: LessonStatus; error?: { message: string } } = { status };
-    if (error) {
-      updateData.error = error;
+    const statusData: {
+      lesson_id: string;
+      status: LessonStatus;
+      metadata?: unknown;
+    } = {
+      lesson_id: lessonId,
+      status,
+    };
+
+    if (metadata !== undefined) {
+      statusData.metadata = metadata;
     }
 
-    const { error: updateError } = await supabase.from('lesson').update(updateData).eq('id', id);
+    const { error: insertError } = await supabase.from('lesson_status_record').insert(statusData);
 
-    if (updateError) {
-      logger.error(`Failed to update lesson status to ${status}:`, updateError);
-      throw new Error(`Failed to update lesson status: ${updateError.message}`);
+    if (insertError) {
+      logger.error(`Failed to create lesson status record for ${status}:`, insertError);
+      throw new Error(`Failed to create lesson status record: ${insertError.message}`);
     }
   }
 

@@ -11,12 +11,12 @@
  */
 
 import { createLLMClient } from '../lib/services/adapters/llm-client';
-import { createOllamaHealthCheck } from '../lib/utils/ollama-health-check';
-import { ActionableBlocksResultSchema } from '../lib/types/actionable-blocks.types';
-import type { ActionableBlocksResult } from '../lib/types/actionable-blocks.types';
-import { BLOCKS_GENERATION_FIXTURES } from './fixtures/blocks-generation-fixtures';
-import type { BlockGenerationFixture } from './fixtures/blocks-generation-fixtures';
 import { logger } from '../lib/services/logger';
+import type { ActionableBlocksResult } from '../lib/types/actionable-blocks.types';
+import { ActionableBlocksResultSchema } from '../lib/types/actionable-blocks.types';
+import { createOllamaHealthCheck } from '../lib/utils/ollama-health-check';
+import type { BlockGenerationFixture } from './fixtures/blocks-generation-fixtures';
+import { BLOCKS_GENERATION_FIXTURES } from './fixtures/blocks-generation-fixtures';
 
 /**
  * Test result for a single fixture
@@ -37,22 +37,48 @@ const validateBlocksFormat = (
 ): { valid: boolean; errors: string[] } => {
   const errors: string[] = [];
 
-  // 1. Block count validation
-  const blockCount = result.blocks.length;
-  if (blockCount < fixture.expectedMetadata.minBlockCount) {
-    errors.push(`Block count too low: ${blockCount} (expected at least ${fixture.expectedMetadata.minBlockCount})`);
+  // 1. Block count validation (across all lessons)
+  const totalBlockCount = result.lessons.reduce((sum, lesson) => sum + lesson.blocks.length, 0);
+  if (totalBlockCount < fixture.expectedMetadata.minBlockCount) {
+    errors.push(
+      `Block count too low: ${totalBlockCount} (expected at least ${fixture.expectedMetadata.minBlockCount})`,
+    );
   }
-  if (blockCount > fixture.expectedMetadata.maxBlockCount) {
-    errors.push(`Block count too high: ${blockCount} (expected at most ${fixture.expectedMetadata.maxBlockCount})`);
+  if (totalBlockCount > fixture.expectedMetadata.maxBlockCount) {
+    errors.push(
+      `Block count too high: ${totalBlockCount} (expected at most ${fixture.expectedMetadata.maxBlockCount})`,
+    );
   }
 
-  // 2. Block string validation
-  result.blocks.forEach((block, index) => {
-    if (typeof block !== 'string') {
-      errors.push(`Block ${index + 1} is not a string: ${typeof block}`);
-    } else if (block.length < 10) {
-      errors.push(`Block ${index + 1} is too short: ${block.length} chars (minimum 10)`);
+  // 1a. Verify totalBlockCount in metadata matches actual count
+  if (result.metadata.totalBlockCount !== totalBlockCount) {
+    errors.push(
+      `Metadata totalBlockCount mismatch: ${result.metadata.totalBlockCount} (metadata) vs ${totalBlockCount} (actual)`,
+    );
+  }
+
+  // 1b. Lesson structure validation
+  if (result.lessons.length === 0) {
+    errors.push('Must have at least 1 lesson');
+  }
+  result.lessons.forEach((lesson, idx) => {
+    if (!lesson.title || lesson.title.length < 3) {
+      errors.push(`Lesson ${idx + 1} has invalid title (must be at least 3 characters)`);
     }
+    if (lesson.blocks.length === 0) {
+      errors.push(`Lesson ${idx + 1} ("${lesson.title}") has no blocks`);
+    }
+  });
+
+  // 2. Block string validation (across all lessons)
+  result.lessons.forEach((lesson, lessonIdx) => {
+    lesson.blocks.forEach((block, blockIdx) => {
+      if (typeof block !== 'string') {
+        errors.push(`Lesson ${lessonIdx + 1}, Block ${blockIdx + 1} is not a string: ${typeof block}`);
+      } else if (block.length < 10) {
+        errors.push(`Lesson ${lessonIdx + 1}, Block ${blockIdx + 1} is too short: ${block.length} chars (minimum 10)`);
+      }
+    });
   });
 
   // 3. Metadata validation
@@ -139,26 +165,35 @@ const runTest = async (
     // Format validation
     const formatValidation = validateBlocksFormat(result, fixture);
 
-    logger.info(`\n   📊 Generated ${result.blocks.length} blocks`);
+    const totalBlocks = result.lessons.reduce((sum, lesson) => sum + lesson.blocks.length, 0);
+    logger.info(`\n   📊 Generated ${result.lessons.length} lessons with ${totalBlocks} total blocks`);
     logger.info(`   🏷️  Topic: ${result.metadata.topic}`);
     logger.info(`   🗂️  Domains: ${result.metadata.domains.join(', ')}`);
     logger.info(`   ⚙️  Complexity: ${result.metadata.complexity} (LLM-estimated)`);
 
-    // Show blocks (full in verbose mode, sample in normal mode)
+    // Show lessons and blocks (full in verbose mode, sample in normal mode)
     if (verbose) {
-      logger.info('\n   📄 All generated blocks:');
-      result.blocks.forEach((block, index) => {
-        logger.info(`\n      Block ${index + 1}:`);
-        logger.info(`      ${block}`);
+      logger.info('\n   📄 All generated lessons and blocks:');
+      result.lessons.forEach((lesson, lessonIdx) => {
+        logger.info(`\n      Lesson ${lessonIdx + 1}: ${lesson.title}`);
+        lesson.blocks.forEach((block, blockIdx) => {
+          logger.info(`         Block ${blockIdx + 1}: ${block}`);
+        });
       });
     } else {
-      logger.info('\n   📄 Sample blocks (first 2):');
-      result.blocks.slice(0, 2).forEach((block, index) => {
-        const preview = block.length > 100 ? block.substring(0, 100) + '...' : block;
-        logger.info(`      ${index + 1}. ${preview}`);
+      logger.info('\n   📄 Sample lessons (first 2):');
+      result.lessons.slice(0, 2).forEach((lesson, lessonIdx) => {
+        logger.info(`\n      Lesson ${lessonIdx + 1}: ${lesson.title}`);
+        lesson.blocks.slice(0, 2).forEach((block, blockIdx) => {
+          const preview = block.length > 80 ? block.substring(0, 80) + '...' : block;
+          logger.info(`         ${blockIdx + 1}. ${preview}`);
+        });
+        if (lesson.blocks.length > 2) {
+          logger.info(`         ... (${lesson.blocks.length - 2} more blocks in this lesson)`);
+        }
       });
-      if (result.blocks.length > 2) {
-        logger.info(`      ... (${result.blocks.length - 2} more blocks, use -v to see all)`);
+      if (result.lessons.length > 2) {
+        logger.info(`\n      ... (${result.lessons.length - 2} more lessons, use -v to see all)`);
       }
     }
 

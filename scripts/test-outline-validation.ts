@@ -78,7 +78,7 @@ const runTests = async (verbose: boolean = false): Promise<void> => {
   logger.info('\n' + '='.repeat(80));
   logger.info('🧪 Running validation tests...\n');
   logger.info(
-    `📏 Thresholds: Intent ≥${(VALIDATION_THRESHOLDS.intent.minIntentScore * 100).toFixed(0)}% | Specificity ≥${(VALIDATION_THRESHOLDS.specificity.minScore * 100).toFixed(0)}% | Age Range: ${VALIDATION_THRESHOLDS.actionability.minAge}-${VALIDATION_THRESHOLDS.actionability.maxAge}\n`,
+    `📏 Thresholds: Safety ≥${(VALIDATION_THRESHOLDS.safety.minSafetyScore * 100).toFixed(0)}% | Specificity ≥${(VALIDATION_THRESHOLDS.specificity.minScore * 100).toFixed(0)}% | Age Range: ${VALIDATION_THRESHOLDS.actionability.minAge}-${VALIDATION_THRESHOLDS.actionability.maxAge}\n`,
   );
 
   let passed = 0;
@@ -134,17 +134,17 @@ const runTests = async (verbose: boolean = false): Promise<void> => {
         continue;
       }
 
-      // Intent scores
-      logger.info('   🎯 Intent Analysis:');
+      // Safety scores
+      logger.info('   🎯 Safety Analysis:');
       logger.info(
-        `      Intent:     ${formatScore(result.enhancedResult.intent.intentScore, VALIDATION_THRESHOLDS.intent.minIntentScore, true)} (0.0=harmful, 1.0=educational)`,
+        `      Safety:     ${formatScore(result.enhancedResult.safety.safetyScore, VALIDATION_THRESHOLDS.safety.minSafetyScore, true)} (0.0=unsafe, 1.0=safe)`,
       );
       logger.info(
-        `      Confidence: ${formatScore(result.enhancedResult.intent.confidence, VALIDATION_THRESHOLDS.intent.minConfidence, true)}`,
+        `      Confidence: ${formatScore(result.enhancedResult.safety.confidence, VALIDATION_THRESHOLDS.safety.minConfidence, true)}`,
       );
-      logger.info(`      Reasoning:  "${result.enhancedResult.intent.reasoning}"`);
-      if (result.enhancedResult.intent.flags && result.enhancedResult.intent.flags.length > 0) {
-        logger.info(`      Flags:      ${result.enhancedResult.intent.flags.join(', ')}`);
+      logger.info(`      Reasoning:  "${result.enhancedResult.safety.reasoning}"`);
+      if (result.enhancedResult.safety.flags && result.enhancedResult.safety.flags.length > 0) {
+        logger.info(`      Flags:      ${result.enhancedResult.safety.flags.join(', ')}`);
       }
 
       logger.info('');
@@ -153,9 +153,6 @@ const runTests = async (verbose: boolean = false): Promise<void> => {
       logger.info('   🔍 Specificity Analysis:');
       logger.info(
         `      Score:      ${formatScore(result.enhancedResult.specificity.specificityScore, VALIDATION_THRESHOLDS.specificity.minScore, true)}`,
-      );
-      logger.info(
-        `      Taxonomy:   ${result.enhancedResult.specificity.matchesTaxonomy ? '✓ Matches' : '✗ No match'}`,
       );
       logger.info(
         `      Topic:      "${result.enhancedResult.specificity.detectedHierarchy.topic}" (${result.enhancedResult.specificity.detectedHierarchy.domains.join(', ')})`,

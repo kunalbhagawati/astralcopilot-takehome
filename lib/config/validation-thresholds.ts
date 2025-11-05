@@ -15,21 +15,21 @@
  */
 export const VALIDATION_THRESHOLDS = {
   /**
-   * Intent validation thresholds
+   * Safety validation thresholds
    */
-  intent: {
+  safety: {
     /**
-     * Minimum intent score required (0.0-1.0)
-     * 0.0 = harmful/negative intent
-     * 1.0 = positive educational intent
+     * Minimum safety score required (0.0-1.0)
+     * 0.0 = unsafe/inappropriate for children
+     * 1.0 = safe/appropriate educational content
      *
-     * Conservative: 0.7 (≥70% positive educational intent)
+     * Conservative: 0.7 (≥70% safe/appropriate)
      */
-    minIntentScore: 0.7,
+    minSafetyScore: 0.7,
 
     /**
      * Minimum confidence score (0.0-1.0)
-     * General confidence in the intent assessment
+     * General confidence in the safety assessment
      *
      * Moderate: 0.6 (≥60% confidence in the assessment)
      */
@@ -42,7 +42,7 @@ export const VALIDATION_THRESHOLDS = {
   specificity: {
     /**
      * Minimum specificity score required (0.0-1.0)
-     * Request is considered specific enough if specificityScore >= this value
+     * Topic must be specific enough to generate ≤100 teaching blocks
      *
      * 1.0 = very specific (e.g., "Photosynthesis")
      * 0.5 = moderately specific (e.g., "Biology basics")
@@ -51,14 +51,6 @@ export const VALIDATION_THRESHOLDS = {
      * High specificity: 0.7 (≥70% specificity required)
      */
     minScore: 0.7,
-
-    /**
-     * Whether to require taxonomy match
-     * If true, rejects requests where matchesTaxonomy = false
-     *
-     * Strict: true (must match predefined taxonomy)
-     */
-    requireTaxonomyMatch: true,
   },
 
   /**
@@ -75,16 +67,16 @@ export const VALIDATION_THRESHOLDS = {
 } as const;
 
 /**
- * Helper function to check if intent passes validation
+ * Helper function to check if safety passes validation
  *
- * @param intentScore - Intent gradient score (0.0-1.0)
+ * @param safetyScore - Safety gradient score (0.0-1.0)
  * @param confidence - Confidence in assessment (0.0-1.0)
- * @returns True if intent is acceptable
+ * @returns True if safety is acceptable
  */
-export const isIntentAcceptable = (intentScore: number, confidence: number): boolean => {
+export const isSafetyAcceptable = (safetyScore: number, confidence: number): boolean => {
   return (
-    intentScore >= VALIDATION_THRESHOLDS.intent.minIntentScore &&
-    confidence >= VALIDATION_THRESHOLDS.intent.minConfidence
+    safetyScore >= VALIDATION_THRESHOLDS.safety.minSafetyScore &&
+    confidence >= VALIDATION_THRESHOLDS.safety.minConfidence
   );
 };
 
@@ -92,14 +84,10 @@ export const isIntentAcceptable = (intentScore: number, confidence: number): boo
  * Helper function to check if specificity passes validation
  *
  * @param specificityScore - Specificity score (0.0-1.0)
- * @param matchesTaxonomy - Whether topic matches predefined taxonomy
  * @returns True if specificity is acceptable
  */
-export const isSpecificityAcceptable = (specificityScore: number, matchesTaxonomy: boolean): boolean => {
-  const meetsScoreThreshold = specificityScore >= VALIDATION_THRESHOLDS.specificity.minScore;
-  const meetsTaxonomyRequirement = !VALIDATION_THRESHOLDS.specificity.requireTaxonomyMatch || matchesTaxonomy;
-
-  return meetsScoreThreshold && meetsTaxonomyRequirement;
+export const isSpecificityAcceptable = (specificityScore: number): boolean => {
+  return specificityScore >= VALIDATION_THRESHOLDS.specificity.minScore;
 };
 
 /**
@@ -123,15 +111,12 @@ export const isAgeRangeAcceptable = (ageRange: [number, number]): boolean => {
  */
 export const getThresholdDescriptions = () => {
   return {
-    intent: {
-      score: `Must be ≥${VALIDATION_THRESHOLDS.intent.minIntentScore * 100}% positive educational intent`,
-      confidence: `Must be ≥${VALIDATION_THRESHOLDS.intent.minConfidence * 100}% confident`,
+    safety: {
+      score: `Must be ≥${VALIDATION_THRESHOLDS.safety.minSafetyScore * 100}% safe/appropriate`,
+      confidence: `Must be ≥${VALIDATION_THRESHOLDS.safety.minConfidence * 100}% confident`,
     },
     specificity: {
       score: `Must be ≥${VALIDATION_THRESHOLDS.specificity.minScore * 100}% specific`,
-      taxonomy: VALIDATION_THRESHOLDS.specificity.requireTaxonomyMatch
-        ? 'Must match predefined taxonomy'
-        : 'Taxonomy match recommended but not required',
     },
     actionability: {
       ageRange: `Must be within ages ${VALIDATION_THRESHOLDS.actionability.minAge}-${VALIDATION_THRESHOLDS.actionability.maxAge}`,

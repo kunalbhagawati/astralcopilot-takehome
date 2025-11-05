@@ -10,25 +10,36 @@ import type { LessonContent } from '@/lib/types/lesson-structure.types';
 
 /**
  * Repository interface for lesson operations
+ *
+ * Uses lesson_status_record table for status tracking (separate from lesson table).
  */
 export interface LessonRepository {
   /**
    * Create a new lesson with content
    *
+   * Note: Status is NOT stored on lesson table. Use createStatusRecord() separately.
+   *
    * @param content - Lesson content (actionables/teaching blocks)
-   * @param status - Initial lesson status
    * @returns Created lesson record
    */
-  create(content: LessonContent, status: LessonStatus): Promise<Lesson>;
+  create(content: LessonContent): Promise<Lesson>;
 
   /**
-   * Update lesson status
+   * Create status record in lesson_status_record
    *
-   * @param id - Lesson ID
-   * @param status - New status
-   * @param error - Optional error data
+   * Records each status transition with optional metadata.
+   * Status changes are append-only for audit trail.
+   *
+   * Metadata structure:
+   * - For success states with LLM output: store LLM output directly
+   * - For 'failed' state: { llmOutput?, failureReason, details? }
+   * - For 'error' state: { message, error, context? } (no stack trace)
+   *
+   * @param lessonId - Lesson ID
+   * @param status - New status (uses DB enum from database.types.ts)
+   * @param metadata - Optional metadata (LLM output, error details, or failure reasons)
    */
-  updateStatus(id: string, status: LessonStatus, error?: { message: string }): Promise<void>;
+  createStatusRecord(lessonId: string, status: LessonStatus, metadata?: unknown): Promise<void>;
 
   /**
    * Create mapping between outline request and lesson

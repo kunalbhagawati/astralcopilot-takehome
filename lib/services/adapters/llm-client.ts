@@ -13,19 +13,19 @@
  * use lib/utils/ollama-health-check.ts
  */
 
-import type { EnhancedValidationResult } from '../../types/validation.types';
-import type { ActionableBlocksResult, BlockGenerationInput } from '../../types/actionable-blocks.types';
-import { EnhancedValidationResultSchema } from '../../types/validation.types';
-import { ActionableBlocksResultSchema } from '../../types/actionable-blocks.types';
-import { VALIDATION_SYSTEM_PROMPT, buildValidationUserPrompt } from '../../prompts/validation-prompts';
 import {
   BLOCKS_GENERATION_SYSTEM_PROMPT,
   buildBlocksGenerationUserPrompt,
-} from '../../prompts/blocks-generation-prompts';
+} from '../../prompts/blocks-generation.prompts';
+import { VALIDATION_SYSTEM_PROMPT, buildValidationUserPrompt } from '../../prompts/validation.prompts';
+import type { ActionableBlocksResult, BlockGenerationInput } from '../../types/actionable-blocks.types';
+import { ActionableBlocksResultSchema } from '../../types/actionable-blocks.types';
+import type { EnhancedValidationResult } from '../../types/validation.types';
+import { EnhancedValidationResultSchema } from '../../types/validation.types';
+import { transformLLMError } from '../utils/llm-error-transformer';
+import { generateBlocks } from './blocks-generator-core';
 import { createAIModel } from './llm-config';
 import { generateValidationResult } from './outline-validation.core';
-import { generateBlocks } from './blocks-generator-core';
-import { transformLLMError } from '../utils/llm-error-transformer';
 
 /**
  * Configuration for LLM client

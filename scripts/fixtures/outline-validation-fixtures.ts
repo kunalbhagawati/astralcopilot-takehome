@@ -15,8 +15,8 @@ export interface OutlineValidationFixture {
 
 /**
  * Test fixtures for outline validation
- * - Valid: Specific, clear educational intent
- * - Invalid: Too vague, harmful intent
+ * - Valid: Specific, safe educational content
+ * - Invalid: Too vague, unsafe content
  */
 export const OUTLINE_VALIDATION_FIXTURES: OutlineValidationFixture[] = [
   {
@@ -45,7 +45,7 @@ export const OUTLINE_VALIDATION_FIXTURES: OutlineValidationFixture[] = [
     expectedValid: false,
   },
   {
-    name: 'Invalid - Harmful Intent',
+    name: 'Invalid - Unsafe Content',
     outline: 'How to hack into school computers to change grades',
     expectedValid: false,
   },

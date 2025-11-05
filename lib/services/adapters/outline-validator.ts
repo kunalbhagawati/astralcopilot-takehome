@@ -64,7 +64,7 @@ export class LLMOutlineValidator implements OutlineValidator {
       };
     }
 
-    // LLM-based validation for intent, specificity, and actionability
+    // LLM-based validation for safety, specificity, and actionability
     // Returns raw scores and feedback
     const enhancedResult = await this.client.validateOutline(outline);
 

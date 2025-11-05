@@ -3,12 +3,12 @@
  *
  * Using Supabase SSR client - https://supabase.com/docs/guides/auth/server-side
  *
- * Handles outline_request table operations and status tracking in outline_request_statuses.
+ * Handles outline_request table operations and status tracking in outline_request_status_record.
  */
 
 import { createClient } from '@/lib/supabase/server';
-import type { OutlineRequest, OutlineRequestStatus } from '@/lib/types/lesson';
 import type { ActionableBlocksResult } from '@/lib/types/actionable-blocks.types';
+import type { OutlineRequest, OutlineRequestStatus } from '@/lib/types/lesson';
 import { logger } from '../logger';
 
 /**
@@ -35,43 +35,37 @@ export class OutlineRequestRepository {
   }
 
   /**
-   * Create status record in outline_request_statuses
+   * Create status record in outline_request_status_record
    *
-   * Records each status transition with optional response and error data.
+   * Records each status transition with optional metadata.
    * Status changes are append-only for audit trail.
    *
+   * Metadata structure:
+   * - For success states with LLM output: store LLM output directly
+   * - For 'failed' state: { llmOutput?, failureReason, details? }
+   * - For 'error' state: { message, error, context? } (no stack trace)
+   *
    * @param id - Outline request ID
-   * @param status - New status
-   * @param response - Optional response data from service (e.g., validation results, generated blocks)
-   * @param error - Optional error data
+   * @param status - New status (uses DB enum from database.types.ts)
+   * @param metadata - Optional metadata (LLM output, error details, or failure reasons)
    */
-  async createStatusRecord(
-    id: string,
-    status: OutlineRequestStatus,
-    response?: unknown,
-    error?: { message: string; errors?: string[]; validationDetails?: unknown },
-  ): Promise<void> {
+  async createStatusRecord(id: string, status: OutlineRequestStatus, metadata?: unknown): Promise<void> {
     const supabase = await createClient();
 
     const statusData: {
       outline_request_id: string;
       status: OutlineRequestStatus;
-      response?: unknown;
-      error?: typeof error;
+      metadata?: unknown;
     } = {
       outline_request_id: id,
       status,
     };
 
-    if (response) {
-      statusData.response = response;
+    if (metadata !== undefined) {
+      statusData.metadata = metadata;
     }
 
-    if (error) {
-      statusData.error = error;
-    }
-
-    const { error: insertError } = await supabase.from('outline_request_statuses').insert(statusData);
+    const { error: insertError } = await supabase.from('outline_request_status_record').insert(statusData);
 
     if (insertError) {
       logger.error(`Failed to create outline request status record for ${status}:`, insertError);

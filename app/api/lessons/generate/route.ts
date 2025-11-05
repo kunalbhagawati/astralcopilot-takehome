@@ -1,6 +1,6 @@
-import { createClient } from '@/lib/supabase/server';
-import { processOutline } from '@/lib/services/outline-request-pipeline';
 import { logger } from '@/lib/services/logger';
+import { processOutline } from '@/lib/services/outline-request-pipeline';
+import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
@@ -27,14 +27,13 @@ export async function POST(request: NextRequest) {
     const title = outline.split('\n')[0].slice(0, 100).trim();
     logger.info('[API] Title extracted:', title);
 
-    // Insert outline request record with 'submitted' status
+    // Insert outline request record
     logger.info('[API] Inserting outline request into database...');
     const { data: outlineRequest, error } = await supabase
       .from('outline_request')
       .insert({
         title,
         outline: outline.trim(),
-        status: 'submitted',
       })
       .select()
       .single();
@@ -45,6 +44,18 @@ export async function POST(request: NextRequest) {
     }
 
     logger.info('[API] Outline request created:', outlineRequest.id);
+
+    // Insert initial status record
+    logger.info('[API] Inserting initial status record...');
+    const { error: statusError } = await supabase.from('outline_request_status_record').insert({
+      outline_request_id: outlineRequest.id,
+      status: 'submitted',
+    });
+
+    if (statusError) {
+      logger.error('[API] Error creating status record:', statusError);
+      return NextResponse.json({ error: 'Failed to create status record' }, { status: 500 });
+    }
 
     // Trigger background processing (async, non-blocking)
     logger.info('[API] Triggering background processing...');
@@ -58,7 +69,7 @@ export async function POST(request: NextRequest) {
         outlineRequest: {
           id: outlineRequest.id,
           title: outlineRequest.title,
-          status: outlineRequest.status,
+          status: 'submitted',
           created_at: outlineRequest.created_at,
         },
       },

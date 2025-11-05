@@ -13,7 +13,7 @@
 import type { EnhancedValidationResult } from '@/lib/types/validation.types';
 import {
   VALIDATION_THRESHOLDS,
-  isIntentAcceptable,
+  isSafetyAcceptable,
   isSpecificityAcceptable,
   isAgeRangeAcceptable,
   getThresholdDescriptions,
@@ -43,63 +43,46 @@ export const applyValidationThresholds = (enhancedResult: EnhancedValidationResu
   const detailedErrors: string[] = [];
   const thresholds = getThresholdDescriptions();
 
-  // Check intent thresholds
-  const intentAcceptable = isIntentAcceptable(enhancedResult.intent.intentScore, enhancedResult.intent.confidence);
+  // Check safety thresholds
+  const safetyAcceptable = isSafetyAcceptable(enhancedResult.safety.safetyScore, enhancedResult.safety.confidence);
 
-  if (!intentAcceptable) {
-    if (enhancedResult.intent.intentScore < VALIDATION_THRESHOLDS.intent.minIntentScore) {
-      // Low intent score - harmful or unclear intent
-      const intentPct = (enhancedResult.intent.intentScore * 100).toFixed(0);
-      if (enhancedResult.intent.intentScore < 0.3) {
-        // Likely harmful intent
+  if (!safetyAcceptable) {
+    if (enhancedResult.safety.safetyScore < VALIDATION_THRESHOLDS.safety.minSafetyScore) {
+      // Low safety score - unsafe or inappropriate content
+      const safetyPct = (enhancedResult.safety.safetyScore * 100).toFixed(0);
+      if (enhancedResult.safety.safetyScore < 0.3) {
+        // Likely unsafe/inappropriate
         detailedErrors.push(
-          `Invalid intent (intentScore: ${intentPct}%, ${thresholds.intent.score}): ${enhancedResult.intent.reasoning}`,
+          `Unsafe content (safetyScore: ${safetyPct}%, ${thresholds.safety.score}): ${enhancedResult.safety.reasoning}`,
         );
       } else {
-        // Unclear/ambiguous intent
+        // Unclear safety level
         detailedErrors.push(
-          `Unclear intent (intentScore: ${intentPct}%, ${thresholds.intent.score}): ${enhancedResult.intent.reasoning}`,
+          `Safety concerns (safetyScore: ${safetyPct}%, ${thresholds.safety.score}): ${enhancedResult.safety.reasoning}`,
         );
       }
-      if (enhancedResult.intent.flags && enhancedResult.intent.flags.length > 0) {
-        detailedErrors.push(`Concerns: ${enhancedResult.intent.flags.join(', ')}`);
+      if (enhancedResult.safety.flags && enhancedResult.safety.flags.length > 0) {
+        detailedErrors.push(`Concerns: ${enhancedResult.safety.flags.join(', ')}`);
       }
-    } else if (enhancedResult.intent.confidence < VALIDATION_THRESHOLDS.intent.minConfidence) {
+    } else if (enhancedResult.safety.confidence < VALIDATION_THRESHOLDS.safety.minConfidence) {
       // Low confidence in assessment
       detailedErrors.push(
-        `Low confidence in intent assessment (${(enhancedResult.intent.confidence * 100).toFixed(0)}%, ${thresholds.intent.confidence})`,
+        `Low confidence in safety assessment (${(enhancedResult.safety.confidence * 100).toFixed(0)}%, ${thresholds.safety.confidence})`,
       );
     }
   }
 
   // Check specificity thresholds
-  const specificityAcceptable = isSpecificityAcceptable(
-    enhancedResult.specificity.specificityScore,
-    enhancedResult.specificity.matchesTaxonomy,
-  );
+  const specificityAcceptable = isSpecificityAcceptable(enhancedResult.specificity.specificityScore);
 
   if (!specificityAcceptable) {
-    if (enhancedResult.specificity.specificityScore < VALIDATION_THRESHOLDS.specificity.minScore) {
-      // Low specificity score - too vague
-      const matchInfo = enhancedResult.specificity.matchesTaxonomy
-        ? `Detected: "${enhancedResult.specificity.detectedHierarchy.topic}"`
-        : 'Topic not found in taxonomy';
+    // Low specificity score - too vague
+    detailedErrors.push(
+      `Too vague (specificityScore: ${(enhancedResult.specificity.specificityScore * 100).toFixed(0)}%, ${thresholds.specificity.score}): Topic "${enhancedResult.specificity.detectedHierarchy.topic}" needs more specificity`,
+    );
 
-      detailedErrors.push(
-        `Too vague (specificityScore: ${(enhancedResult.specificity.specificityScore * 100).toFixed(0)}%, ${thresholds.specificity.score}): ${matchInfo}`,
-      );
-
-      if (enhancedResult.specificity.suggestions && enhancedResult.specificity.suggestions.length > 0) {
-        detailedErrors.push(`Suggestions: ${enhancedResult.specificity.suggestions.join('; ')}`);
-      }
-    } else if (!enhancedResult.specificity.matchesTaxonomy && VALIDATION_THRESHOLDS.specificity.requireTaxonomyMatch) {
-      // Specific but not in taxonomy
-      detailedErrors.push(
-        `Topic "${enhancedResult.specificity.detectedHierarchy.topic}" not found in our taxonomy (${thresholds.specificity.taxonomy})`,
-      );
-      if (enhancedResult.specificity.suggestions && enhancedResult.specificity.suggestions.length > 0) {
-        detailedErrors.push(`Did you mean: ${enhancedResult.specificity.suggestions.join(', ')}?`);
-      }
+    if (enhancedResult.specificity.suggestions && enhancedResult.specificity.suggestions.length > 0) {
+      detailedErrors.push(`Suggestions: ${enhancedResult.specificity.suggestions.join('; ')}`);
     }
   }
 
@@ -128,7 +111,7 @@ export const applyValidationThresholds = (enhancedResult: EnhancedValidationResu
   const allErrors = [...(enhancedResult.errors || []), ...detailedErrors];
 
   // Determine overall pass/fail
-  const passed = intentAcceptable && specificityAcceptable && actionabilityAcceptable;
+  const passed = safetyAcceptable && specificityAcceptable && actionabilityAcceptable;
 
   return {
     passed,
@@ -152,7 +135,7 @@ export const extractValidationFeedback = (enhancedResult: EnhancedValidationResu
     requirements: enhancedResult.actionability.requirements,
     targetAgeRange: enhancedResult.actionability.targetAgeRange,
     // Optionally include reasoning if helpful for generation
-    intentReasoning: enhancedResult.intent.reasoning,
+    safetyReasoning: enhancedResult.safety.reasoning,
     suggestions: enhancedResult.suggestions,
   };
 };

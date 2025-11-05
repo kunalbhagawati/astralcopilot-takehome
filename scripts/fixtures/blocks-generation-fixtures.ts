@@ -4,8 +4,8 @@
  * Generated from validation output to ensure consistent test data.
  * These fixtures include complete BlockGenerationInput objects ready for testing.
  *
- * Note: LLM-generated complexity may not always match expected complexity
- * due to model interpretation. Tests should be flexible on complexity matching.
+ * Note: LLM-generated complexity and lesson grouping may not always match expectations
+ * due to model interpretation. Tests validate total block count, not specific lesson structure.
  */
 
 import type { BlockGenerationInput } from '../../lib/types/actionable-blocks.types';
@@ -43,8 +43,8 @@ export const BLOCKS_GENERATION_FIXTURES: BlockGenerationFixture[] = [
         },
         requirements: ['teach primary colors to kindergarten students'],
         targetAgeRange: [5, 6],
-        intentReasoning:
-          'The request is clearly educational in intent, focusing on teaching kindergarten students a fundamental concept in art and design.',
+        safetyReasoning:
+          'The request is clearly safe and educational, focusing on teaching kindergarten students a fundamental concept in art and design.',
         suggestions: [],
       },
     },
@@ -67,8 +67,8 @@ export const BLOCKS_GENERATION_FIXTURES: BlockGenerationFixture[] = [
         },
         requirements: ['Create a lesson on counting from 1 to 10'],
         targetAgeRange: [6, 7],
-        intentReasoning:
-          'The request is clear and specific about teaching counting to first graders, which indicates a genuine educational intent.',
+        safetyReasoning:
+          'The request is clear, specific, and safe - teaching counting to first graders is age-appropriate educational content.',
         suggestions: [],
       },
     },
@@ -91,7 +91,8 @@ export const BLOCKS_GENERATION_FIXTURES: BlockGenerationFixture[] = [
         },
         requirements: ['create a quiz with 5 questions', 'target audience is 5th graders'],
         targetAgeRange: [10, 11],
-        intentReasoning: 'Clear educational purpose, appropriate topic for K-10 students, target audience is specific.',
+        safetyReasoning:
+          'Clear educational purpose, safe and appropriate topic for K-10 students, target audience is specific.',
         suggestions: [],
       },
     },
@@ -117,8 +118,8 @@ export const BLOCKS_GENERATION_FIXTURES: BlockGenerationFixture[] = [
           'Include examples and exercises',
         ],
         targetAgeRange: [9, 10],
-        intentReasoning:
-          'The request is for a specific educational topic (adding fractions with like denominators) and the target audience is clearly defined as 4th graders.',
+        safetyReasoning:
+          'The request is safe and appropriate - teaching adding fractions with like denominators to 4th graders is age-appropriate math education.',
         suggestions: ['Consider including visual aids to help students understand the concept of equivalent ratios.'],
       },
     },
@@ -141,7 +142,7 @@ export const BLOCKS_GENERATION_FIXTURES: BlockGenerationFixture[] = [
         },
         requirements: ['Explain solving linear equations with variables on both sides'],
         targetAgeRange: [13, 14],
-        intentReasoning: 'Clear educational purpose, suitable topic for 8th graders.',
+        safetyReasoning: 'Clear educational purpose, safe and suitable topic for 8th graders.',
         suggestions: [],
       },
     },
@@ -165,8 +166,7 @@ export const BLOCKS_GENERATION_FIXTURES: BlockGenerationFixture[] = [
         },
         requirements: ['Comprehensive lesson on eukaryotic cell structure', 'Organelle functions for 9th graders'],
         targetAgeRange: [14, 15],
-        intentReasoning:
-          'Clear educational purpose with a specific topic and grade level, indicating a genuine intent to learn.',
+        safetyReasoning: 'Clear educational purpose with safe, age-appropriate biology content for 9th graders.',
         suggestions: [
           'Consider breaking down the topic into smaller modules, such as nucleus, mitochondria, and chloroplasts, to enhance student understanding.',
         ],
