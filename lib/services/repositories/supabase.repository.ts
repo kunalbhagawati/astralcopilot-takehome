@@ -6,73 +6,10 @@
  */
 
 import { createClient } from '@/lib/supabase/server';
-import type { OutlineRequest, OutlineRequestStatus, Lesson, LessonStatus } from '@/lib/types/lesson';
+import type { Lesson, LessonStatus } from '@/lib/types/lesson';
 import type { LessonContent } from '@/lib/types/lesson-structure.types';
-import type { ActionableBlocksResult } from '@/lib/types/actionable-blocks.types';
-import type { OutlineRequestRepository } from './outline-request.repository';
 import type { LessonRepository } from './lesson.repository';
 import { logger } from '../logger';
-
-/**
- * Supabase implementation of OutlineRequestRepository
- */
-export class SupabaseOutlineRequestRepository implements OutlineRequestRepository {
-  /**
-   * Find outline request by ID
-   */
-  async findById(id: string): Promise<OutlineRequest | null> {
-    const supabase = await createClient();
-
-    const { data, error } = await supabase.from('outline_request').select('*').eq('id', id).single();
-
-    if (error) {
-      logger.error('Failed to fetch outline request:', error);
-      return null;
-    }
-
-    return data;
-  }
-
-  /**
-   * Update outline request status
-   */
-  async updateStatus(
-    id: string,
-    status: OutlineRequestStatus,
-    error?: { message: string; errors?: string[]; validationDetails?: unknown },
-  ): Promise<void> {
-    const supabase = await createClient();
-
-    const updateData: { status: OutlineRequestStatus; error?: typeof error } = { status };
-    if (error) {
-      updateData.error = error;
-    }
-
-    const { error: updateError } = await supabase.from('outline_request').update(updateData).eq('id', id);
-
-    if (updateError) {
-      logger.error(`Failed to update outline request status to ${status}:`, updateError);
-      throw new Error(`Failed to update outline request status: ${updateError.message}`);
-    }
-  }
-
-  /**
-   * Update outline request content blocks
-   *
-   * Stores the generated actionable blocks (teaching points) in the
-   * outline_request.content_blocks JSONB column.
-   */
-  async updateBlocks(id: string, blocks: ActionableBlocksResult): Promise<void> {
-    const supabase = await createClient();
-
-    const { error } = await supabase.from('outline_request').update({ content_blocks: blocks }).eq('id', id);
-
-    if (error) {
-      logger.error('Failed to update outline request blocks:', error);
-      throw new Error(`Failed to update outline request blocks: ${error.message}`);
-    }
-  }
-}
 
 /**
  * Supabase implementation of LessonRepository
@@ -144,7 +81,6 @@ export class SupabaseLessonRepository implements LessonRepository {
  */
 export const createSupabaseRepositories = () => {
   return {
-    outlineRequestRepository: new SupabaseOutlineRequestRepository(),
     lessonRepository: new SupabaseLessonRepository(),
   };
 };

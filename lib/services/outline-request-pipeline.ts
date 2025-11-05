@@ -7,8 +7,7 @@ import {
   getOutlineValidator,
 } from './adapters/outline-validator';
 import { mapStateToStatus as mapOutlineStateToStatus, outlineRequestMachine } from './machines/outline-request.machine';
-import { type OutlineRequestRepository } from './repositories/outline-request.repository';
-import { createSupabaseRepositories } from './repositories/supabase.repository';
+import { OutlineRequestRepository } from './repositories/outline-request.repository';
 import { extractValidationFeedback } from './validation-rules.service';
 import { logger } from './logger';
 
@@ -71,8 +70,8 @@ export class OutlineRequestPipeline {
       outlineActor.subscribe((snapshot) => {
         const status = mapOutlineStateToStatus(snapshot.value);
         const error = snapshot.context.error;
-        this.outlineRepo.updateStatus(outlineRequestId, status, error).catch((err) => {
-          logger.error('Failed to update outline request status:', err);
+        this.outlineRepo.createStatusRecord(outlineRequestId, status, undefined, error).catch((err) => {
+          logger.error('Failed to create outline request status record:', err);
         });
       });
 
@@ -156,7 +155,7 @@ export class OutlineRequestPipeline {
       outlineActor.stop();
     } catch (error) {
       logger.error('Error processing outline request:', error);
-      await this.outlineRepo.updateStatus(outlineRequestId, 'error', {
+      await this.outlineRepo.createStatusRecord(outlineRequestId, 'error', undefined, {
         message: error instanceof Error ? error.message : 'Unknown error occurred',
       });
     }
@@ -172,9 +171,7 @@ export class OutlineRequestPipeline {
  * @returns Configured pipeline instance
  */
 export const createPipeline = (): OutlineRequestPipeline => {
-  const { outlineRequestRepository } = createSupabaseRepositories();
-
-  return new OutlineRequestPipeline(getOutlineValidator(), createLLMClient(), outlineRequestRepository);
+  return new OutlineRequestPipeline(getOutlineValidator(), createLLMClient(), new OutlineRequestRepository());
 };
 
 /**
