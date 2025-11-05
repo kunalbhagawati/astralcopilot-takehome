@@ -32,28 +32,57 @@ export type Database = {
         Row: {
           content: Json;
           created_at: string | null;
-          error: Json | null;
           id: string;
-          status: Database['public']['Enums']['lesson_status'];
           updated_at: string | null;
         };
         Insert: {
           content: Json;
           created_at?: string | null;
-          error?: Json | null;
           id?: string;
-          status?: Database['public']['Enums']['lesson_status'];
           updated_at?: string | null;
         };
         Update: {
           content?: Json;
           created_at?: string | null;
-          error?: Json | null;
           id?: string;
-          status?: Database['public']['Enums']['lesson_status'];
           updated_at?: string | null;
         };
         Relationships: [];
+      };
+      lesson_status_record: {
+        Row: {
+          created_at: string | null;
+          id: string;
+          lesson_id: string;
+          metadata: Json | null;
+          status: Database['public']['Enums']['lesson_status'];
+          updated_at: string | null;
+        };
+        Insert: {
+          created_at?: string | null;
+          id?: string;
+          lesson_id: string;
+          metadata?: Json | null;
+          status?: Database['public']['Enums']['lesson_status'];
+          updated_at?: string | null;
+        };
+        Update: {
+          created_at?: string | null;
+          id?: string;
+          lesson_id?: string;
+          metadata?: Json | null;
+          status?: Database['public']['Enums']['lesson_status'];
+          updated_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'lesson_status_record_lesson_id_fkey';
+            columns: ['lesson_id'];
+            isOneToOne: false;
+            referencedRelation: 'lesson';
+            referencedColumns: ['id'];
+          },
+        ];
       };
       mapping_outline_request_lesson: {
         Row: {
@@ -93,33 +122,65 @@ export type Database = {
       };
       outline_request: {
         Row: {
+          content_blocks: Json | null;
           created_at: string | null;
-          error: Json | null;
           id: string;
           outline: string;
-          status: Database['public']['Enums']['outline_request_status'];
           title: string | null;
           updated_at: string | null;
         };
         Insert: {
+          content_blocks?: Json | null;
           created_at?: string | null;
-          error?: Json | null;
           id?: string;
           outline: string;
-          status?: Database['public']['Enums']['outline_request_status'];
           title?: string | null;
           updated_at?: string | null;
         };
         Update: {
+          content_blocks?: Json | null;
           created_at?: string | null;
-          error?: Json | null;
           id?: string;
           outline?: string;
-          status?: Database['public']['Enums']['outline_request_status'];
           title?: string | null;
           updated_at?: string | null;
         };
         Relationships: [];
+      };
+      outline_request_status_record: {
+        Row: {
+          created_at: string | null;
+          id: string;
+          metadata: Json | null;
+          outline_request_id: string;
+          status: Database['public']['Enums']['outline_request_status'];
+          updated_at: string | null;
+        };
+        Insert: {
+          created_at?: string | null;
+          id?: string;
+          metadata?: Json | null;
+          outline_request_id: string;
+          status?: Database['public']['Enums']['outline_request_status'];
+          updated_at?: string | null;
+        };
+        Update: {
+          created_at?: string | null;
+          id?: string;
+          metadata?: Json | null;
+          outline_request_id?: string;
+          status?: Database['public']['Enums']['outline_request_status'];
+          updated_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'outline_request_status_record_outline_request_id_fkey';
+            columns: ['outline_request_id'];
+            isOneToOne: false;
+            referencedRelation: 'outline_request';
+            referencedColumns: ['id'];
+          },
+        ];
       };
     };
     Views: {
@@ -129,14 +190,26 @@ export type Database = {
       [_ in never]: never;
     };
     Enums: {
-      lesson_status: 'generated' | 'validating' | 'ready_to_use' | 'error';
+      lesson_status:
+        | 'lesson.generated'
+        | 'lesson.validating'
+        | 'lesson.ready_to_use'
+        | 'error'
+        | 'completed'
+        | 'failed';
       outline_request_status:
         | 'submitted'
-        | 'validating_outline'
-        | 'generating_lessons'
-        | 'validating_lessons'
+        | 'outline.validating'
+        | 'outline.validated'
+        | 'outline.blocks.generating'
+        | 'outline.blocks.generated'
+        | 'lessons.generating'
+        | 'lessons.generated'
+        | 'lessons.validating'
+        | 'lessons.validated'
         | 'completed'
-        | 'error';
+        | 'error'
+        | 'failed';
     };
     CompositeTypes: {
       [_ in never]: never;
@@ -259,14 +332,20 @@ export const Constants = {
   },
   public: {
     Enums: {
-      lesson_status: ['generated', 'validating', 'ready_to_use', 'error'],
+      lesson_status: ['lesson.generated', 'lesson.validating', 'lesson.ready_to_use', 'error', 'completed', 'failed'],
       outline_request_status: [
         'submitted',
-        'validating_outline',
-        'generating_lessons',
-        'validating_lessons',
+        'outline.validating',
+        'outline.validated',
+        'outline.blocks.generating',
+        'outline.blocks.generated',
+        'lessons.generating',
+        'lessons.generated',
+        'lessons.validating',
+        'lessons.validated',
         'completed',
         'error',
+        'failed',
       ],
     },
   },
