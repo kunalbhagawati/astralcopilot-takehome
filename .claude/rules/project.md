@@ -510,8 +510,14 @@ export default function Page({ params }: { params: { id: string } }) {
 
 ## Post Implementation ✓
 
-- [ ] Type checking passes (`bun run lint`)
-- [ ] Linting passes for staged (`bunx lint-staged`)
+- [ ] Type checking passes (`bunx tsc --noEmit`)
+- [ ] Linting passes for all modified files (staged + unstaged + new):
+  ```bash
+  FILES=$(git diff --name-only HEAD; git ls-files --others --exclude-standard) | grep -E '\.(ts|tsx|js|jsx)$'
+  echo "$FILES" | xargs -r bunx eslint --fix
+  echo "$FILES" | xargs -r bunx prettier --write
+  echo "$FILES" | xargs -r bunx tsc-files --noEmit
+  ```
 - [ ] `bun run build` passes without errors
 
 ## Documentation ✓

@@ -7,7 +7,6 @@
 
 import { createClient } from '@/lib/supabase/server';
 import type { Lesson, LessonStatus } from '@/lib/types/lesson';
-import type { LessonContent } from '@/lib/types/lesson-structure.types';
 import { logger } from '../logger';
 import type { LessonRepository } from './lesson.repository';
 
@@ -18,17 +17,20 @@ import type { LessonRepository } from './lesson.repository';
  */
 export class SupabaseLessonRepository implements LessonRepository {
   /**
-   * Create a new lesson with content
+   * Create a new lesson with generated TSX code
    *
    * Note: Status is NOT stored on lesson table. Use createStatusRecord() separately.
+   * Compiled code is added later after validation using updateCompiledCode().
    */
-  async create(content: LessonContent): Promise<Lesson> {
+  async create(title: string, generatedCode: { tsxCode: string; componentName: string }): Promise<Lesson> {
     const supabase = await createClient();
 
     const { data, error } = await supabase
       .from('lesson')
       .insert({
-        content,
+        title,
+        generated_code: generatedCode, // JSONB column with { tsxCode, componentName }
+        // compiled_code is null initially, added after validation
       })
       .select()
       .single();
@@ -39,6 +41,53 @@ export class SupabaseLessonRepository implements LessonRepository {
     }
 
     return data;
+  }
+
+  /**
+   * Get number of validation attempts for a lesson
+   *
+   * Counts existing 'lesson.validating' status records to support retry logic
+   * that survives process crashes.
+   */
+  async getValidationAttempts(lessonId: string): Promise<number> {
+    const supabase = await createClient();
+
+    const { data, error } = await supabase
+      .from('lesson_status_record')
+      .select('id')
+      .eq('lesson_id', lessonId)
+      .eq('status', 'lesson.validating');
+
+    if (error) {
+      logger.error('Failed to get validation attempts:', error);
+      throw new Error(`Failed to get validation attempts: ${error.message}`);
+    }
+
+    return data?.length || 0;
+  }
+
+  /**
+   * Update lesson with compiled JavaScript code after validation
+   *
+   * Called after TSX validation and compilation succeed.
+   */
+  async updateCompiledCode(
+    lessonId: string,
+    compiledCode: { javascript: string; componentName: string },
+  ): Promise<void> {
+    const supabase = await createClient();
+
+    const { error } = await supabase
+      .from('lesson')
+      .update({
+        compiled_code: compiledCode, // JSONB column
+      })
+      .eq('id', lessonId);
+
+    if (error) {
+      logger.error('Failed to update compiled code:', error);
+      throw new Error(`Failed to update compiled code: ${error.message}`);
+    }
   }
 
   /**

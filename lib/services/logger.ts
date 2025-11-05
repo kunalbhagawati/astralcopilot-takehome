@@ -19,12 +19,20 @@ if (!existsSync(logsDir)) {
 const logFile = join(logsDir, `app-${new Date().toISOString().split('T')[0]}.log`);
 const fileStream = createWriteStream(logFile, { flags: 'a' });
 
-// Create consola instance with console + file output
+// Create consola with console output and file reporter
 export const logger: ConsolaInstance = createConsola({
+  level: 3, // Info level (0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace)
   reporters: [
+    // Default console reporter
     {
       log: (logObj) => {
-        // Write to file
+        const args = logObj.args.join(' ');
+        console.log(`[${logObj.type}]`, args);
+      },
+    },
+    // File reporter
+    {
+      log: (logObj) => {
         fileStream.write(JSON.stringify({ ...logObj, date: new Date().toISOString() }) + '\n');
       },
     },
