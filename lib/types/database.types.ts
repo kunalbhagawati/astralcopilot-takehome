@@ -30,21 +30,27 @@ export type Database = {
     Tables: {
       lesson: {
         Row: {
-          content: Json;
+          compiled_code: Json | null;
           created_at: string | null;
+          generated_code: Json;
           id: string;
+          title: string | null;
           updated_at: string | null;
         };
         Insert: {
-          content: Json;
+          compiled_code?: Json | null;
           created_at?: string | null;
+          generated_code: Json;
           id?: string;
+          title?: string | null;
           updated_at?: string | null;
         };
         Update: {
-          content?: Json;
+          compiled_code?: Json | null;
           created_at?: string | null;
+          generated_code?: Json;
           id?: string;
+          title?: string | null;
           updated_at?: string | null;
         };
         Relationships: [];
@@ -191,9 +197,10 @@ export type Database = {
     };
     Enums: {
       lesson_status:
+        | 'lesson.generating'
         | 'lesson.generated'
         | 'lesson.validating'
-        | 'lesson.ready_to_use'
+        | 'lesson.compiling'
         | 'error'
         | 'completed'
         | 'failed';
@@ -332,7 +339,15 @@ export const Constants = {
   },
   public: {
     Enums: {
-      lesson_status: ['lesson.generated', 'lesson.validating', 'lesson.ready_to_use', 'error', 'completed', 'failed'],
+      lesson_status: [
+        'lesson.generating',
+        'lesson.generated',
+        'lesson.validating',
+        'lesson.compiling',
+        'error',
+        'completed',
+        'failed',
+      ],
       outline_request_status: [
         'submitted',
         'outline.validating',
