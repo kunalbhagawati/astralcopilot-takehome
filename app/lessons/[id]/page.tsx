@@ -151,13 +151,15 @@ export default function LessonPage() {
                   <CardTitle className="text-2xl">{outlineRequest.title || 'Untitled'}</CardTitle>
                   <CardDescription className="mt-2">
                     Created:{' '}
-                    {new Date(outlineRequest.created_at).toLocaleDateString('en-US', {
-                      month: 'long',
-                      day: 'numeric',
-                      year: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
+                    {outlineRequest.created_at
+                      ? new Date(outlineRequest.created_at).toLocaleDateString('en-US', {
+                          month: 'long',
+                          day: 'numeric',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      : 'N/A'}
                   </CardDescription>
                 </div>
                 <Badge variant={outlineRequest.status === 'completed' ? 'default' : 'secondary'}>
@@ -197,7 +199,7 @@ export default function LessonPage() {
                       </CardHeader>
                       <CardContent>
                         <p className="text-sm text-muted-foreground">
-                          Created: {new Date(lesson.created_at).toLocaleString()}
+                          Created: {lesson.created_at ? new Date(lesson.created_at).toLocaleString() : 'N/A'}
                         </p>
                       </CardContent>
                     </Card>
@@ -215,9 +217,12 @@ export default function LessonPage() {
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-destructive">
-                  {typeof outlineRequest.error === 'object'
-                    ? outlineRequest.error.message || JSON.stringify(outlineRequest.error)
-                    : outlineRequest.error}
+                  {typeof outlineRequest.error === 'object' &&
+                  outlineRequest.error !== null &&
+                  !Array.isArray(outlineRequest.error) &&
+                  'message' in outlineRequest.error
+                    ? (outlineRequest.error.message as string) || JSON.stringify(outlineRequest.error)
+                    : JSON.stringify(outlineRequest.error)}
                 </p>
               </CardContent>
             </Card>

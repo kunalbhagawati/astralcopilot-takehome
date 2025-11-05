@@ -510,9 +510,9 @@ export default function Page({ params }: { params: { id: string } }) {
 
 ## Post Implementation ✓
 
+- [ ] Type checking passes (`bun run lint`)
+- [ ] Linting passes for staged (`bunx lint-staged`)
 - [ ] `bun run build` passes without errors
-- [ ] Type checking passes (if `bunx run type-check` available)
-- [ ] Linting passes (`bunx lint-staged`)
 
 ## Documentation ✓
 

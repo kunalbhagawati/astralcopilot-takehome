@@ -19,20 +19,13 @@ export const VALIDATION_THRESHOLDS = {
    */
   intent: {
     /**
-     * Minimum positive score required (0.0-1.0)
-     * Request is considered acceptable if positiveScore >= this value
+     * Minimum intent score required (0.0-1.0)
+     * 0.0 = harmful/negative intent
+     * 1.0 = positive educational intent
      *
-     * Conservative: 0.8 (≥80% confidence in positive educational intent)
+     * Conservative: 0.7 (≥70% positive educational intent)
      */
-    minPositiveScore: 0.8,
-
-    /**
-     * Maximum negative score allowed (0.0-1.0)
-     * Request is rejected if negativeScore > this value
-     *
-     * Conservative: 0.2 (>20% confidence in harmful/negative intent)
-     */
-    maxNegativeScore: 0.2,
+    minIntentScore: 0.7,
 
     /**
      * Minimum confidence score (0.0-1.0)
@@ -70,26 +63,27 @@ export const VALIDATION_THRESHOLDS = {
 
   /**
    * Actionability validation thresholds
-   * Currently boolean-only (actionable: true/false)
-   * No numeric thresholds needed
    */
   actionability: {
-    // Future: Could add complexity thresholds if needed
+    /**
+     * Supported age range for pedagogy (classes 1-10)
+     * Ages 5-16 correspond to typical K-10 education
+     */
+    minAge: 5,
+    maxAge: 16,
   },
 } as const;
 
 /**
  * Helper function to check if intent passes validation
  *
- * @param positiveScore - Positive intent score (0.0-1.0)
- * @param negativeScore - Negative intent score (0.0-1.0)
+ * @param intentScore - Intent gradient score (0.0-1.0)
  * @param confidence - Confidence in assessment (0.0-1.0)
  * @returns True if intent is acceptable
  */
-export const isIntentAcceptable = (positiveScore: number, negativeScore: number, confidence: number): boolean => {
+export const isIntentAcceptable = (intentScore: number, confidence: number): boolean => {
   return (
-    positiveScore >= VALIDATION_THRESHOLDS.intent.minPositiveScore &&
-    negativeScore <= VALIDATION_THRESHOLDS.intent.maxNegativeScore &&
+    intentScore >= VALIDATION_THRESHOLDS.intent.minIntentScore &&
     confidence >= VALIDATION_THRESHOLDS.intent.minConfidence
   );
 };
@@ -109,14 +103,28 @@ export const isSpecificityAcceptable = (specificityScore: number, matchesTaxonom
 };
 
 /**
+ * Helper function to check if age range is within supported pedagogy range
+ *
+ * @param ageRange - Target age range [minAge, maxAge]
+ * @returns True if age range is within supported range [5, 16]
+ */
+export const isAgeRangeAcceptable = (ageRange: [number, number]): boolean => {
+  const [minAge, maxAge] = ageRange;
+  return (
+    minAge >= VALIDATION_THRESHOLDS.actionability.minAge &&
+    maxAge <= VALIDATION_THRESHOLDS.actionability.maxAge &&
+    minAge <= maxAge
+  );
+};
+
+/**
  * Get human-readable threshold descriptions
  * Useful for error messages and debugging
  */
 export const getThresholdDescriptions = () => {
   return {
     intent: {
-      positive: `Must be ≥${VALIDATION_THRESHOLDS.intent.minPositiveScore * 100}% positive`,
-      negative: `Must be ≤${VALIDATION_THRESHOLDS.intent.maxNegativeScore * 100}% negative`,
+      score: `Must be ≥${VALIDATION_THRESHOLDS.intent.minIntentScore * 100}% positive educational intent`,
       confidence: `Must be ≥${VALIDATION_THRESHOLDS.intent.minConfidence * 100}% confident`,
     },
     specificity: {
@@ -124,6 +132,9 @@ export const getThresholdDescriptions = () => {
       taxonomy: VALIDATION_THRESHOLDS.specificity.requireTaxonomyMatch
         ? 'Must match predefined taxonomy'
         : 'Taxonomy match recommended but not required',
+    },
+    actionability: {
+      ageRange: `Must be within ages ${VALIDATION_THRESHOLDS.actionability.minAge}-${VALIDATION_THRESHOLDS.actionability.maxAge}`,
     },
   };
 };

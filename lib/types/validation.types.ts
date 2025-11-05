@@ -2,9 +2,9 @@
  * Enhanced validation types for LLM-based outline validation
  *
  * These types support multi-stage validation:
- * 1. Intent classification (numeric scores: positiveScore, negativeScore)
+ * 1. Intent classification (single gradient: intentScore 0.0-1.0)
  * 2. Specificity analysis (numeric score: specificityScore, boolean: matchesTaxonomy)
- * 3. Actionability checks (boolean: actionable, content type, complexity)
+ * 3. Actionability checks (boolean: actionable, age range: [min, max])
  *
  * Philosophy: LLM provides numeric scores (0.0-1.0), server applies thresholds
  */
@@ -27,16 +27,14 @@ export interface TopicHierarchy {
 /**
  * Intent classification result
  * Determines if the user has positive learning intent
- * Uses numeric scores instead of string classifications
+ * Uses single gradient score (0.0-1.0)
  */
 export interface IntentClassification {
-  /** Probability this is genuine positive educational intent (0.0-1.0) */
-  positiveScore: number;
-  /** Probability this has harmful/negative intent (0.0-1.0) */
-  negativeScore: number;
+  /** Intent gradient: 0.0 = harmful/negative intent, 1.0 = positive educational intent */
+  intentScore: number;
   /** Confidence in the assessment (0.0-1.0) */
   confidence: number;
-  /** Explanation for the scores */
+  /** Explanation for the score */
   reasoning: string;
   /** Optional flags for potential issues */
   flags?: string[];
@@ -69,8 +67,8 @@ export interface SpecificityAnalysis {
 export interface ActionabilityCheck {
   /** Is the outline actionable? */
   actionable: boolean;
-  /** Estimated complexity */
-  estimatedComplexity: 'simple' | 'moderate' | 'complex';
+  /** Target age range [minAge, maxAge] - must be within pedagogy range [5, 16] */
+  targetAgeRange: [number, number];
   /** List of identified requirements */
   requirements: string[];
   /** Missing information if not actionable */
@@ -79,10 +77,10 @@ export interface ActionabilityCheck {
 
 /**
  * Enhanced validation result combining all validation aspects
+ *
+ * Note: LLM generates scores only. Server computes validity via applyValidationThresholds().
  */
 export interface EnhancedValidationResult {
-  /** Overall validation status */
-  valid: boolean;
   /** Intent classification */
   intent: IntentClassification;
   /** Specificity analysis */
@@ -125,11 +123,10 @@ export interface StructuredOutline {
 /**
  * Zod schema for IntentClassification
  * Used for structured output validation from LLM
- * Validates numeric scores instead of string enums
+ * Validates single intent gradient (0.0-1.0)
  */
 export const IntentClassificationSchema = z.object({
-  positiveScore: z.number().min(0).max(1),
-  negativeScore: z.number().min(0).max(1),
+  intentScore: z.number().min(0).max(1),
   confidence: z.number().min(0).max(1),
   reasoning: z.string(),
   flags: z.array(z.string()).optional(),
@@ -159,16 +156,17 @@ export const SpecificityAnalysisSchema = z.object({
  */
 export const ActionabilityCheckSchema = z.object({
   actionable: z.boolean(),
-  estimatedComplexity: z.enum(['simple', 'moderate', 'complex']),
+  targetAgeRange: z.tuple([z.number().int().min(1).max(100), z.number().int().min(1).max(100)]),
   requirements: z.array(z.string()),
   missingInfo: z.array(z.string()).optional(),
 });
 
 /**
  * Zod schema for EnhancedValidationResult
+ *
+ * Note: Does not include 'valid' field - server computes validity via applyValidationThresholds().
  */
 export const EnhancedValidationResultSchema = z.object({
-  valid: z.boolean(),
   intent: IntentClassificationSchema,
   specificity: SpecificityAnalysisSchema,
   actionability: ActionabilityCheckSchema,
@@ -213,4 +211,9 @@ export const QualityValidationResultSchema = z.object({
   errors: z.array(z.string()),
   suggestions: z.array(z.string()),
   qualityScore: z.number().min(0).max(1),
-});
+}); // Validation result (simple valid/errors structure used by pipeline)
+
+export interface ValidationResult {
+  valid: boolean;
+  errors?: string[];
+}

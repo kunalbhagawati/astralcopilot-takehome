@@ -8,10 +8,10 @@ import { OutlineRequestStatus } from '@/lib/types/lesson';
 interface OutlineRequestContext {
   outlineRequestId: string;
   outline: string;
-  lessonId?: string;
   error?: {
     message: string;
     errors?: string[];
+    validationDetails?: unknown;
   };
 }
 
@@ -21,27 +21,25 @@ interface OutlineRequestContext {
 type OutlineRequestEvent =
   | { type: 'outline.validation.start' }
   | { type: 'outline.validation.success' }
-  | { type: 'outline.validation.failed'; error: { message: string; errors?: string[] } }
-  | { type: 'outline.lesson.generation.start' }
-  | { type: 'outline.lesson.generation.success'; lessonId: string }
-  | { type: 'outline.lesson.generation.failed'; error: { message: string } }
-  | { type: 'outline.lesson.validation.success' }
-  | { type: 'outline.lesson.validation.failed'; error: { message: string } };
+  | {
+      type: 'outline.validation.failed';
+      error: {
+        message: string;
+        errors?: string[];
+        validationDetails?: unknown;
+      };
+    }
+  | { type: 'blocks.generation.start' }
+  | { type: 'blocks.generation.success' }
+  | { type: 'blocks.generation.failed'; error: { message: string } };
 
 /**
  * State machine for managing the outline request lifecycle
  *
- * Uses nested states for lesson validation within validating_lessons parent state
- *
  * Flow:
- * submitted → validating_outline → generating_lessons → validating_lessons (parent) → completed
- *                ↓                        ↓                     ↓
- *              error                    error                 error
- *
- * validating_lessons contains nested states:
- *   - lesson_validating → lesson_ready
- *         ↓
- *       error
+ * submitted → validating_outline → generating_blocks → blocks_generated
+ *                ↓                        ↓
+ *              error                    error
  */
 export const outlineRequestMachine = setup({
   types: {
@@ -53,21 +51,8 @@ export const outlineRequestMachine = setup({
     // Store error in context
     storeError: assign({
       error: ({ event }) => {
-        if (
-          event.type === 'outline.validation.failed' ||
-          event.type === 'outline.lesson.generation.failed' ||
-          event.type === 'outline.lesson.validation.failed'
-        ) {
+        if (event.type === 'outline.validation.failed' || event.type === 'blocks.generation.failed') {
           return event.error;
-        }
-        return undefined;
-      },
-    }),
-    // Store lesson ID in context
-    storeLessonId: assign({
-      lessonId: ({ event }) => {
-        if (event.type === 'outline.lesson.generation.success') {
-          return event.lessonId;
         }
         return undefined;
       },
@@ -89,47 +74,25 @@ export const outlineRequestMachine = setup({
     },
     validating_outline: {
       on: {
-        'outline.validation.success': 'generating_lessons',
+        'outline.validation.success': 'generating_blocks',
         'outline.validation.failed': {
           target: 'error',
           actions: 'storeError',
         },
       },
     },
-    generating_lessons: {
+    generating_blocks: {
       on: {
-        'outline.lesson.generation.success': {
-          target: 'validating_lessons',
-          actions: 'storeLessonId',
+        'blocks.generation.success': {
+          target: 'blocks_generated',
         },
-        'outline.lesson.generation.failed': {
+        'blocks.generation.failed': {
           target: 'error',
           actions: 'storeError',
         },
       },
     },
-    // Parent state containing nested lesson validation states
-    validating_lessons: {
-      initial: 'lesson_validating',
-      states: {
-        lesson_validating: {
-          on: {
-            'outline.lesson.validation.success': 'lesson_ready',
-            'outline.lesson.validation.failed': {
-              target: '#outlineRequest.error',
-              actions: 'storeError',
-            },
-          },
-        },
-        lesson_ready: {
-          // Automatically transition to completed when lesson is ready
-          always: {
-            target: '#outlineRequest.completed',
-          },
-        },
-      },
-    },
-    completed: {
+    blocks_generated: {
       type: 'final',
     },
     error: {
