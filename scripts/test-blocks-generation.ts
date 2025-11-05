@@ -16,6 +16,7 @@ import { ActionableBlocksResultSchema } from '../lib/types/actionable-blocks.typ
 import type { ActionableBlocksResult } from '../lib/types/actionable-blocks.types';
 import { BLOCKS_GENERATION_FIXTURES } from './fixtures/blocks-generation-fixtures';
 import type { BlockGenerationFixture } from './fixtures/blocks-generation-fixtures';
+import { logger } from '../lib/services/logger';
 
 /**
  * Test result for a single fixture
@@ -89,7 +90,7 @@ const validateBlocksFormat = (
   );
 
   if (!hasMatchingDomain) {
-    console.log(
+    logger.info(
       `   ⚠️  No matching domains (LLM variability): [${result.metadata.domains.join(', ')}] vs [${fixture.expectedMetadata.domains.join(', ')}]`,
     );
   }
@@ -108,13 +109,13 @@ const runTest = async (
   fixture: BlockGenerationFixture,
   verbose: boolean = false,
 ): Promise<TestResult> => {
-  console.log('─'.repeat(80));
-  console.log(`📝 Test: ${fixture.name}`);
-  console.log(`   Outline: "${fixture.input.originalOutline}"`);
-  console.log(
+  logger.info('─'.repeat(80));
+  logger.info(`📝 Test: ${fixture.name}`);
+  logger.info(`   Outline: "${fixture.input.originalOutline}"`);
+  logger.info(
     `   Target Age Range: ${fixture.input.validationFeedback.targetAgeRange[0]}-${fixture.input.validationFeedback.targetAgeRange[1]}`,
   );
-  console.log(
+  logger.info(
     `   Expected Block Count: ${fixture.expectedMetadata.minBlockCount}-${fixture.expectedMetadata.maxBlockCount}`,
   );
 
@@ -125,9 +126,9 @@ const runTest = async (
     // Schema validation
     try {
       ActionableBlocksResultSchema.parse(result);
-      console.log('\n   ✅ Schema validation: PASSED');
+      logger.info('\n   ✅ Schema validation: PASSED');
     } catch (error) {
-      console.log('\n   ❌ Schema validation: FAILED');
+      logger.info('\n   ❌ Schema validation: FAILED');
       return {
         name: fixture.name,
         passed: false,
@@ -138,31 +139,31 @@ const runTest = async (
     // Format validation
     const formatValidation = validateBlocksFormat(result, fixture);
 
-    console.log(`\n   📊 Generated ${result.blocks.length} blocks`);
-    console.log(`   🏷️  Topic: ${result.metadata.topic}`);
-    console.log(`   🗂️  Domains: ${result.metadata.domains.join(', ')}`);
-    console.log(`   ⚙️  Complexity: ${result.metadata.complexity} (LLM-estimated)`);
+    logger.info(`\n   📊 Generated ${result.blocks.length} blocks`);
+    logger.info(`   🏷️  Topic: ${result.metadata.topic}`);
+    logger.info(`   🗂️  Domains: ${result.metadata.domains.join(', ')}`);
+    logger.info(`   ⚙️  Complexity: ${result.metadata.complexity} (LLM-estimated)`);
 
     // Show blocks (full in verbose mode, sample in normal mode)
     if (verbose) {
-      console.log('\n   📄 All generated blocks:');
+      logger.info('\n   📄 All generated blocks:');
       result.blocks.forEach((block, index) => {
-        console.log(`\n      Block ${index + 1}:`);
-        console.log(`      ${block}`);
+        logger.info(`\n      Block ${index + 1}:`);
+        logger.info(`      ${block}`);
       });
     } else {
-      console.log('\n   📄 Sample blocks (first 2):');
+      logger.info('\n   📄 Sample blocks (first 2):');
       result.blocks.slice(0, 2).forEach((block, index) => {
         const preview = block.length > 100 ? block.substring(0, 100) + '...' : block;
-        console.log(`      ${index + 1}. ${preview}`);
+        logger.info(`      ${index + 1}. ${preview}`);
       });
       if (result.blocks.length > 2) {
-        console.log(`      ... (${result.blocks.length - 2} more blocks, use -v to see all)`);
+        logger.info(`      ... (${result.blocks.length - 2} more blocks, use -v to see all)`);
       }
     }
 
     if (formatValidation.valid) {
-      console.log('\n   ✅ TEST PASSED');
+      logger.info('\n   ✅ TEST PASSED');
       return {
         name: fixture.name,
         passed: true,
@@ -170,9 +171,9 @@ const runTest = async (
         result,
       };
     } else {
-      console.log('\n   ❌ TEST FAILED');
+      logger.info('\n   ❌ TEST FAILED');
       formatValidation.errors.forEach((error) => {
-        console.log(`      - ${error}`);
+        logger.info(`      - ${error}`);
       });
       return {
         name: fixture.name,
@@ -182,9 +183,9 @@ const runTest = async (
       };
     }
   } catch (error) {
-    console.log('\n   ❌ TEST FAILED - Exception thrown');
+    logger.info('\n   ❌ TEST FAILED - Exception thrown');
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.log(`      ${errorMessage}`);
+    logger.info(`      ${errorMessage}`);
     return {
       name: fixture.name,
       passed: false,
@@ -197,38 +198,38 @@ const runTest = async (
  * Run all blocks generation tests
  */
 const runTests = async (verbose: boolean = false): Promise<void> => {
-  console.log('🚀 Starting Blocks Generation Tests (K-10 Education)');
+  logger.info('🚀 Starting Blocks Generation Tests (K-10 Education)');
   if (verbose) {
-    console.log('   (Verbose mode: showing full LLM output)');
+    logger.info('   (Verbose mode: showing full LLM output)');
   }
-  console.log('\n' + '='.repeat(80));
+  logger.info('\n' + '='.repeat(80));
 
   // Ollama health check
-  console.log('\n📡 Checking Ollama connection...');
+  logger.info('\n📡 Checking Ollama connection...');
   const healthCheck = createOllamaHealthCheck();
   const health = await healthCheck.checkHealth();
 
   if (!health.available) {
-    console.error('❌ Ollama not available');
-    console.error('   Please ensure Ollama is running with the required model');
+    logger.error('❌ Ollama not available');
+    logger.error('   Please ensure Ollama is running with the required model');
     process.exit(1);
   }
 
-  console.log('✅ Ollama is available');
-  console.log(`📦 Available models: ${health.models?.join(', ') || 'unknown'}`);
+  logger.info('✅ Ollama is available');
+  logger.info(`📦 Available models: ${health.models?.join(', ') || 'unknown'}`);
 
   // Ensure required model is available
-  console.log('\n📦 Ensuring required model is available...');
+  logger.info('\n📦 Ensuring required model is available...');
   try {
     await healthCheck.ensureModel('llama3.1');
-    console.log('✅ llama3.1 model is ready');
+    logger.info('✅ llama3.1 model is ready');
   } catch (error) {
-    console.error('❌ Failed to ensure model availability:', error);
+    logger.error('❌ Failed to ensure model availability:', error);
     process.exit(1);
   }
 
-  console.log('\n' + '='.repeat(80));
-  console.log('🧪 Running blocks generation tests...\n');
+  logger.info('\n' + '='.repeat(80));
+  logger.info('🧪 Running blocks generation tests...\n');
 
   const client = createLLMClient();
   const results: TestResult[] = [];
@@ -240,28 +241,28 @@ const runTests = async (verbose: boolean = false): Promise<void> => {
   }
 
   // Summary
-  console.log('\n' + '='.repeat(80));
+  logger.info('\n' + '='.repeat(80));
   const passedCount = results.filter((r) => r.passed).length;
   const failedCount = results.filter((r) => !r.passed).length;
 
-  console.log(`\n📊 Test Results: ${passedCount} passed, ${failedCount} failed out of ${results.length} tests\n`);
+  logger.info(`\n📊 Test Results: ${passedCount} passed, ${failedCount} failed out of ${results.length} tests\n`);
 
   if (failedCount === 0) {
-    console.log('🎉 All tests passed!\n');
+    logger.info('🎉 All tests passed!\n');
   } else {
-    console.log('⚠️  Some tests failed. This may be due to:');
-    console.log('   - LLM variability (different runs may produce different results)');
-    console.log('   - Model differences (different models may generate different outputs)');
-    console.log('   - Prompt engineering needs refinement\n');
+    logger.info('⚠️  Some tests failed. This may be due to:');
+    logger.info('   - LLM variability (different runs may produce different results)');
+    logger.info('   - Model differences (different models may generate different outputs)');
+    logger.info('   - Prompt engineering needs refinement\n');
   }
 
-  console.log('='.repeat(80));
-  console.log('\n💡 Note: Content quality is NOT validated (LLM non-deterministic)');
-  console.log('   These tests only validate schema and format consistency.');
+  logger.info('='.repeat(80));
+  logger.info('\n💡 Note: Content quality is NOT validated (LLM non-deterministic)');
+  logger.info('   These tests only validate schema and format consistency.');
   if (!verbose) {
-    console.log('\n💡 Tip: Run with -v or --verbose to see all generated blocks');
+    logger.info('\n💡 Tip: Run with -v or --verbose to see all generated blocks');
   }
-  console.log();
+  logger.info('');
 };
 
 /**
@@ -275,7 +276,7 @@ const main = async (): Promise<void> => {
   try {
     await runTests(verbose);
   } catch (error) {
-    console.error('\n❌ Test execution failed:', error);
+    logger.error('\n❌ Test execution failed:', error);
     process.exit(1);
   }
 };
@@ -286,5 +287,5 @@ export { main };
 // Run if executed directly
 // @ts-ignore - Bun-specific property not in standard TypeScript
 if (import.meta.main) {
-  main().catch(console.error);
+  main().catch((error) => logger.error(error));
 }

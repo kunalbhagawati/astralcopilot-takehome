@@ -10,6 +10,7 @@ import { mapStateToStatus as mapOutlineStateToStatus, outlineRequestMachine } fr
 import { type OutlineRequestRepository } from './repositories/outline-request.repository';
 import { createSupabaseRepositories } from './repositories/supabase.repository';
 import { extractValidationFeedback } from './validation-rules.service';
+import { logger } from './logger';
 
 /**
  * Outline Request Pipeline
@@ -52,7 +53,7 @@ export class OutlineRequestPipeline {
       const outlineRequest = await this.outlineRepo.findById(outlineRequestId);
 
       if (!outlineRequest) {
-        console.error('Outline request not found:', outlineRequestId);
+        logger.error('Outline request not found:', outlineRequestId);
         return;
       }
 
@@ -71,7 +72,7 @@ export class OutlineRequestPipeline {
         const status = mapOutlineStateToStatus(snapshot.value);
         const error = snapshot.context.error;
         this.outlineRepo.updateStatus(outlineRequestId, status, error).catch((err) => {
-          console.error('Failed to update outline request status:', err);
+          logger.error('Failed to update outline request status:', err);
         });
       });
 
@@ -154,7 +155,7 @@ export class OutlineRequestPipeline {
       // State machine should transition to blocks_generated (final state)
       outlineActor.stop();
     } catch (error) {
-      console.error('Error processing outline request:', error);
+      logger.error('Error processing outline request:', error);
       await this.outlineRepo.updateStatus(outlineRequestId, 'error', {
         message: error instanceof Error ? error.message : 'Unknown error occurred',
       });
@@ -187,6 +188,6 @@ export async function processOutline(outlineRequestId: string): Promise<void> {
 
   // Run the process in the background (don't await)
   pipeline.processOutlineRequest(outlineRequestId).catch((error) => {
-    console.error('Background blocks generation failed:', error);
+    logger.error('Background blocks generation failed:', error);
   });
 }

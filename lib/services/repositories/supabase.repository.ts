@@ -11,6 +11,7 @@ import type { LessonContent } from '@/lib/types/lesson-structure.types';
 import type { ActionableBlocksResult } from '@/lib/types/actionable-blocks.types';
 import type { OutlineRequestRepository } from './outline-request.repository';
 import type { LessonRepository } from './lesson.repository';
+import { logger } from '../logger';
 
 /**
  * Supabase implementation of OutlineRequestRepository
@@ -25,7 +26,7 @@ export class SupabaseOutlineRequestRepository implements OutlineRequestRepositor
     const { data, error } = await supabase.from('outline_request').select('*').eq('id', id).single();
 
     if (error) {
-      console.error('Failed to fetch outline request:', error);
+      logger.error('Failed to fetch outline request:', error);
       return null;
     }
 
@@ -50,7 +51,7 @@ export class SupabaseOutlineRequestRepository implements OutlineRequestRepositor
     const { error: updateError } = await supabase.from('outline_request').update(updateData).eq('id', id);
 
     if (updateError) {
-      console.error(`Failed to update outline request status to ${status}:`, updateError);
+      logger.error(`Failed to update outline request status to ${status}:`, updateError);
       throw new Error(`Failed to update outline request status: ${updateError.message}`);
     }
   }
@@ -67,7 +68,7 @@ export class SupabaseOutlineRequestRepository implements OutlineRequestRepositor
     const { error } = await supabase.from('outline_request').update({ content_blocks: blocks }).eq('id', id);
 
     if (error) {
-      console.error('Failed to update outline request blocks:', error);
+      logger.error('Failed to update outline request blocks:', error);
       throw new Error(`Failed to update outline request blocks: ${error.message}`);
     }
   }
@@ -93,7 +94,7 @@ export class SupabaseLessonRepository implements LessonRepository {
       .single();
 
     if (error || !data) {
-      console.error('Failed to create lesson:', error);
+      logger.error('Failed to create lesson:', error);
       throw new Error(`Failed to create lesson: ${error?.message || 'Unknown error'}`);
     }
 
@@ -114,7 +115,7 @@ export class SupabaseLessonRepository implements LessonRepository {
     const { error: updateError } = await supabase.from('lesson').update(updateData).eq('id', id);
 
     if (updateError) {
-      console.error(`Failed to update lesson status to ${status}:`, updateError);
+      logger.error(`Failed to update lesson status to ${status}:`, updateError);
       throw new Error(`Failed to update lesson status: ${updateError.message}`);
     }
   }
@@ -131,7 +132,7 @@ export class SupabaseLessonRepository implements LessonRepository {
     });
 
     if (error) {
-      console.error('Failed to create mapping:', error);
+      logger.error('Failed to create mapping:', error);
       throw new Error(`Failed to create mapping: ${error.message}`);
     }
   }

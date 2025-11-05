@@ -23,6 +23,7 @@ import { getOutlineValidator, type EnhancedOutlineValidationResult } from '../li
 import { EnhancedValidationResultSchema } from '../lib/types/validation.types';
 import { createOllamaHealthCheck } from '../lib/utils/ollama-health-check';
 import { OUTLINE_VALIDATION_FIXTURES } from './fixtures/outline-validation-fixtures';
+import { logger } from '../lib/services/logger';
 
 /**
  * Format score as percentage with pass/fail indicator
@@ -40,43 +41,43 @@ const formatScore = (score: number, threshold: number, higherIsBetter: boolean):
  * Run validation tests
  */
 const runTests = async (verbose: boolean = false): Promise<void> => {
-  console.log('🚀 Starting Outline Validation Tests (K-10 Education)');
+  logger.info('🚀 Starting Outline Validation Tests (K-10 Education)');
   if (verbose) {
-    console.log('   (Verbose mode: showing full LLM output)');
+    logger.info('   (Verbose mode: showing full LLM output)');
   }
-  console.log('\n' + '='.repeat(80));
+  logger.info('\n' + '='.repeat(80));
 
   // Check Ollama health and model availability
   const healthCheck = createOllamaHealthCheck();
 
-  console.log('\n📡 Checking Ollama connection...');
+  logger.info('\n📡 Checking Ollama connection...');
   const health = await healthCheck.checkHealth();
 
   if (!health.available) {
-    console.error('❌ Ollama is not available. Please ensure Ollama is running.');
-    console.error('   Run: ollama serve');
+    logger.error('❌ Ollama is not available. Please ensure Ollama is running.');
+    logger.error('   Run: ollama serve');
     process.exit(1);
   }
 
-  console.log('✅ Ollama is available');
-  console.log(`📦 Available models: ${health.models.join(', ')}`);
+  logger.info('✅ Ollama is available');
+  logger.info(`📦 Available models: ${health.models.join(', ')}`);
 
   // Ensure required models are available
-  console.log('\n📦 Ensuring required models are available...');
+  logger.info('\n📦 Ensuring required models are available...');
   try {
     await healthCheck.ensureModel('llama3.1');
-    console.log('✅ llama3.1 model is ready');
+    logger.info('✅ llama3.1 model is ready');
   } catch (error) {
-    console.error('❌ Failed to ensure model availability:', error);
+    logger.error('❌ Failed to ensure model availability:', error);
     process.exit(1);
   }
 
   // Create validator for tests (includes LLM + threshold application)
   const validator = getOutlineValidator();
 
-  console.log('\n' + '='.repeat(80));
-  console.log('🧪 Running validation tests...\n');
-  console.log(
+  logger.info('\n' + '='.repeat(80));
+  logger.info('🧪 Running validation tests...\n');
+  logger.info(
     `📏 Thresholds: Intent ≥${(VALIDATION_THRESHOLDS.intent.minIntentScore * 100).toFixed(0)}% | Specificity ≥${(VALIDATION_THRESHOLDS.specificity.minScore * 100).toFixed(0)}% | Age Range: ${VALIDATION_THRESHOLDS.actionability.minAge}-${VALIDATION_THRESHOLDS.actionability.maxAge}\n`,
   );
 
@@ -85,11 +86,11 @@ const runTests = async (verbose: boolean = false): Promise<void> => {
   let schemaErrors = 0;
 
   for (const test of OUTLINE_VALIDATION_FIXTURES) {
-    console.log(`\n${'─'.repeat(80)}`);
-    console.log(`📝 Test: ${test.name}`);
-    console.log(`   Outline: "${test.outline}"`);
-    console.log(`   Expected: ${test.expectedValid ? 'VALID ✓' : 'INVALID ✗'}`);
-    console.log();
+    logger.info(`\n${'─'.repeat(80)}`);
+    logger.info(`📝 Test: ${test.name}`);
+    logger.info(`   Outline: "${test.outline}"`);
+    logger.info(`   Expected: ${test.expectedValid ? 'VALID ✓' : 'INVALID ✗'}`);
+    logger.info('');
 
     try {
       const validationResult = await validator.validate(test.outline);
@@ -99,75 +100,75 @@ const runTests = async (verbose: boolean = false): Promise<void> => {
       if (result.enhancedResult) {
         try {
           EnhancedValidationResultSchema.parse(result.enhancedResult);
-          console.log('   ✅ Schema validation: PASSED');
+          logger.info('   ✅ Schema validation: PASSED');
         } catch (schemaError) {
-          console.error('   ❌ Schema validation: FAILED');
-          console.error(`      ${schemaError instanceof Error ? schemaError.message : 'Unknown schema error'}`);
+          logger.error('   ❌ Schema validation: FAILED');
+          logger.error(`      ${schemaError instanceof Error ? schemaError.message : 'Unknown schema error'}`);
           schemaErrors++;
         }
       }
 
-      console.log();
-      console.log(`   📊 Result: ${validationResult.valid ? 'VALID ✓' : 'INVALID ✗'}`);
-      console.log();
+      logger.info('');
+      logger.info(`   📊 Result: ${validationResult.valid ? 'VALID ✓' : 'INVALID ✗'}`);
+      logger.info('');
 
       // Show full JSON output in verbose mode
       if (verbose) {
-        console.log('   📄 Full Validation Result (JSON):');
-        console.log(
+        logger.info('   📄 Full Validation Result (JSON):');
+        logger.info(
           JSON.stringify(validationResult, null, 2)
             .split('\n')
             .map((line) => `      ${line}`)
             .join('\n'),
         );
-        console.log();
+        logger.info('');
       }
 
       // Check if we have enhanced result for detailed output
       if (!result.enhancedResult) {
-        console.log('   ⚠️  No enhanced validation result available');
+        logger.info('   ⚠️  No enhanced validation result available');
         if (!validationResult.valid && validationResult.errors && validationResult.errors.length > 0) {
-          console.log('\n   ⚠️  Validation Errors:');
-          validationResult.errors.forEach((err: string) => console.log(`      - ${err}`));
+          logger.info('\n   ⚠️  Validation Errors:');
+          validationResult.errors.forEach((err: string) => logger.info(`      - ${err}`));
         }
         continue;
       }
 
       // Intent scores
-      console.log('   🎯 Intent Analysis:');
-      console.log(
+      logger.info('   🎯 Intent Analysis:');
+      logger.info(
         `      Intent:     ${formatScore(result.enhancedResult.intent.intentScore, VALIDATION_THRESHOLDS.intent.minIntentScore, true)} (0.0=harmful, 1.0=educational)`,
       );
-      console.log(
+      logger.info(
         `      Confidence: ${formatScore(result.enhancedResult.intent.confidence, VALIDATION_THRESHOLDS.intent.minConfidence, true)}`,
       );
-      console.log(`      Reasoning:  "${result.enhancedResult.intent.reasoning}"`);
+      logger.info(`      Reasoning:  "${result.enhancedResult.intent.reasoning}"`);
       if (result.enhancedResult.intent.flags && result.enhancedResult.intent.flags.length > 0) {
-        console.log(`      Flags:      ${result.enhancedResult.intent.flags.join(', ')}`);
+        logger.info(`      Flags:      ${result.enhancedResult.intent.flags.join(', ')}`);
       }
 
-      console.log();
+      logger.info('');
 
       // Specificity scores
-      console.log('   🔍 Specificity Analysis:');
-      console.log(
+      logger.info('   🔍 Specificity Analysis:');
+      logger.info(
         `      Score:      ${formatScore(result.enhancedResult.specificity.specificityScore, VALIDATION_THRESHOLDS.specificity.minScore, true)}`,
       );
-      console.log(
+      logger.info(
         `      Taxonomy:   ${result.enhancedResult.specificity.matchesTaxonomy ? '✓ Matches' : '✗ No match'}`,
       );
-      console.log(
+      logger.info(
         `      Topic:      "${result.enhancedResult.specificity.detectedHierarchy.topic}" (${result.enhancedResult.specificity.detectedHierarchy.domains.join(', ')})`,
       );
       if (result.enhancedResult.specificity.suggestions && result.enhancedResult.specificity.suggestions.length > 0) {
-        console.log(`      Suggestions: ${result.enhancedResult.specificity.suggestions.join('; ')}`);
+        logger.info(`      Suggestions: ${result.enhancedResult.specificity.suggestions.join('; ')}`);
       }
 
-      console.log();
+      logger.info('');
 
       // Actionability
-      console.log('   ⚙️  Actionability:');
-      console.log(
+      logger.info('   ⚙️  Actionability:');
+      logger.info(
         `      Status:     ${result.enhancedResult.actionability.actionable ? '✓ Actionable' : '✗ Not actionable'}`,
       );
       const [minAge, maxAge] = result.enhancedResult.actionability.targetAgeRange;
@@ -175,75 +176,75 @@ const runTests = async (verbose: boolean = false): Promise<void> => {
         minAge >= VALIDATION_THRESHOLDS.actionability.minAge &&
         maxAge <= VALIDATION_THRESHOLDS.actionability.maxAge &&
         minAge <= maxAge;
-      console.log(`      Age Range:  [${minAge}, ${maxAge}] ${ageRangeValid ? '✓' : '✗'}`);
+      logger.info(`      Age Range:  [${minAge}, ${maxAge}] ${ageRangeValid ? '✓' : '✗'}`);
       if (result.enhancedResult.actionability.requirements.length > 0) {
-        console.log(`      Requirements: ${result.enhancedResult.actionability.requirements.join(', ')}`);
+        logger.info(`      Requirements: ${result.enhancedResult.actionability.requirements.join(', ')}`);
       }
       if (
         result.enhancedResult.actionability.missingInfo &&
         result.enhancedResult.actionability.missingInfo.length > 0
       ) {
-        console.log(`      Missing:    ${result.enhancedResult.actionability.missingInfo.join(', ')}`);
+        logger.info(`      Missing:    ${result.enhancedResult.actionability.missingInfo.join(', ')}`);
       }
 
-      console.log();
+      logger.info('');
 
       // Test result
       if (validationResult.valid !== test.expectedValid) {
-        console.log(
+        logger.info(
           `   ❌ TEST FAILED: Expected ${test.expectedValid ? 'VALID' : 'INVALID'} but got ${validationResult.valid ? 'VALID' : 'INVALID'}`,
         );
         failed++;
       } else {
-        console.log(`   ✅ TEST PASSED`);
+        logger.info(`   ✅ TEST PASSED`);
         passed++;
       }
 
       // Errors (from top-level result or enhanced result)
       const errors = validationResult.errors || result.enhancedResult.errors;
       if (!validationResult.valid && errors && errors.length > 0) {
-        console.log();
-        console.log('   ⚠️  Validation Errors:');
-        errors.forEach((err: string) => console.log(`      - ${err}`));
+        logger.info('');
+        logger.info('   ⚠️  Validation Errors:');
+        errors.forEach((err: string) => logger.info(`      - ${err}`));
       }
 
       // Suggestions (from enhanced result)
       if (result.enhancedResult.suggestions && result.enhancedResult.suggestions.length > 0) {
-        console.log();
-        console.log('   💡 Suggestions:');
-        result.enhancedResult.suggestions.forEach((sug: string) => console.log(`      - ${sug}`));
+        logger.info('');
+        logger.info('   💡 Suggestions:');
+        result.enhancedResult.suggestions.forEach((sug: string) => logger.info(`      - ${sug}`));
       }
     } catch (error) {
-      console.error(`   ❌ ERROR: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      logger.error(`   ❌ ERROR: ${error instanceof Error ? error.message : 'Unknown error'}`);
       failed++;
     }
   }
 
-  console.log('\n' + '='.repeat(80));
-  console.log(
+  logger.info('\n' + '='.repeat(80));
+  logger.info(
     `\n📊 Test Results: ${passed} passed, ${failed} failed out of ${OUTLINE_VALIDATION_FIXTURES.length} tests`,
   );
 
   if (schemaErrors > 0) {
-    console.log(`⚠️  Schema validation failures: ${schemaErrors}`);
+    logger.info(`⚠️  Schema validation failures: ${schemaErrors}`);
   }
 
   if (failed > 0) {
-    console.log('\n⚠️  Some tests failed. This may be due to:');
-    console.log('   - LLM variability (different runs may produce different results)');
-    console.log('   - Model differences (different models may classify differently)');
-    console.log('   - Prompt engineering needs refinement');
+    logger.info('\n⚠️  Some tests failed. This may be due to:');
+    logger.info('   - LLM variability (different runs may produce different results)');
+    logger.info('   - Model differences (different models may classify differently)');
+    logger.info('   - Prompt engineering needs refinement');
   } else if (schemaErrors === 0) {
-    console.log('\n🎉 All tests passed with valid schema!');
+    logger.info('\n🎉 All tests passed with valid schema!');
   } else {
-    console.log('\n⚠️  All tests passed but some schema validation errors occurred');
+    logger.info('\n⚠️  All tests passed but some schema validation errors occurred');
   }
 
   if (!verbose) {
-    console.log('\n💡 Tip: Run with -v or --verbose to see full LLM output (JSON)');
+    logger.info('\n💡 Tip: Run with -v or --verbose to see full LLM output (JSON)');
   }
 
-  console.log('\n' + '='.repeat(80));
+  logger.info('\n' + '='.repeat(80));
 };
 
 /**
@@ -257,7 +258,7 @@ const main = async (): Promise<void> => {
   try {
     await runTests(verbose);
   } catch (error) {
-    console.error('\n❌ Test execution failed:', error);
+    logger.error('\n❌ Test execution failed:', error);
     process.exit(1);
   }
 };
@@ -268,5 +269,5 @@ export { main };
 // Run if executed directly (Bun-specific)
 // @ts-ignore - Bun-specific property not in standard TypeScript
 if (import.meta.main) {
-  main().catch(console.error);
+  main().catch(logger.error);
 }
