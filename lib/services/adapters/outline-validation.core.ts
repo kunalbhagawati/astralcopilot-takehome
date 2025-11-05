@@ -66,7 +66,7 @@ export interface QualityValidationConfig {
 }
 
 /**
- * Validate outline for intent, specificity, and actionability
+ * Validate outline for safety, specificity, and actionability
  *
  * Pure function that delegates to Vercel AI SDK.
  * No error handling - let errors bubble up for caller to handle.
@@ -119,24 +119,6 @@ export const generateValidationResult = async (
  * @param outline - Text outline to structure
  * @param config - Structuring configuration
  * @returns Promise resolving to validated StructuredOutline
- *
- * @example REPL usage
- * ```typescript
- * import { generateStructuredOutline } from './validation-core'
- * import { createAIModel } from './llm-config'
- * import { StructuredOutlineSchema } from '../../types/validation.types'
- * import { buildOutlineStructuringPrompt } from '../../prompts/generation-prompts'
- *
- * const model = createAIModel('llama3.1')
- * const outline = "Create a quiz on photosynthesis for 5th graders"
- * const result = await generateStructuredOutline(outline, {
- *   model,
- *   systemPrompt: 'You are an expert at parsing educational content requests.',
- *   buildUserPrompt: buildOutlineStructuringPrompt,
- *   schema: StructuredOutlineSchema,
- *   temperature: 0.2
- * })
- * ```
  */
 export const generateStructuredOutline = async (
   outline: string,
@@ -163,25 +145,6 @@ export const generateStructuredOutline = async (
  * @param lessonContentJson - Generated lesson content as JSON string
  * @param config - Quality validation configuration
  * @returns Promise resolving to validated QualityValidationResult
- *
- * @example REPL usage
- * ```typescript
- * import { generateQualityValidation } from './validation-core'
- * import { createAIModel } from './llm-config'
- * import { QualityValidationResultSchema } from '../../types/validation.types'
- * import { buildQualityValidationPrompt } from '../../prompts/generation-prompts'
- *
- * const model = createAIModel('llama3.1')
- * const lessonContent = { ... }
- * const contentJson = JSON.stringify(lessonContent, null, 2)
- * const result = await generateQualityValidation(contentJson, {
- *   model,
- *   systemPrompt: 'You are an expert at validating educational content quality.',
- *   buildUserPrompt: buildQualityValidationPrompt,
- *   schema: QualityValidationResultSchema,
- *   temperature: 0.2
- * })
- * ```
  */
 export const generateQualityValidation = async (
   lessonContentJson: string,

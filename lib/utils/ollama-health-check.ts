@@ -10,6 +10,8 @@
  * NOT used by the main application flow - errors bubble naturally from Vercel AI SDK
  */
 
+import { logger } from '@/lib/services/logger';
+
 /**
  * Configuration for Ollama health checks
  */
@@ -67,7 +69,7 @@ export class OllamaHealthCheck {
     try {
       const health = await this.checkHealth();
       if (!health.models.some((m) => m.startsWith(modelName))) {
-        console.log(`Pulling model ${modelName}...`);
+        logger.info(`Pulling model ${modelName}...`);
         const response = await fetch(`${this.config.host}/api/pull`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

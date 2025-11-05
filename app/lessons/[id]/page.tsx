@@ -1,23 +1,37 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
-import { OutlineRequest, Lesson } from '@/lib/types/lesson';
+import { ThemeSwitcher } from '@/components/theme-switcher';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { ThemeSwitcher } from '@/components/theme-switcher';
+import { createClient } from '@/lib/supabase/client';
+import { Lesson, LessonStatus, OutlineRequest, OutlineRequestStatus } from '@/lib/types/lesson';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import Link from 'next/link';
+import { useParams, useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+
+/**
+ * Extended types with status information from status tables
+ */
+type OutlineRequestWithStatus = OutlineRequest & {
+  status?: OutlineRequestStatus;
+  metadata?: Record<string, unknown> | null;
+};
+
+type LessonWithStatus = Lesson & {
+  title?: string;
+  status?: LessonStatus;
+  metadata?: Record<string, unknown> | null;
+};
 
 export default function LessonPage() {
   const params = useParams();
   const router = useRouter();
   const outlineRequestId = params.id as string;
 
-  const [outlineRequest, setOutlineRequest] = useState<OutlineRequest | null>(null);
-  const [lessons, setLessons] = useState<Lesson[]>([]);
+  const [outlineRequest, setOutlineRequest] = useState<OutlineRequestWithStatus | null>(null);
+  const [lessons, setLessons] = useState<LessonWithStatus[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,7 +60,27 @@ export default function LessonPage() {
       return;
     }
 
-    setOutlineRequest(outlineRequestData);
+    // Fetch latest status for outline request
+    const { data: statusData, error: statusError } = await supabase
+      .from('outline_request_status_record')
+      .select('status, metadata')
+      .eq('outline_request_id', outlineRequestId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (statusError) {
+      console.error('Error fetching outline request status:', statusError);
+    }
+
+    // Combine outline request with status
+    const outlineRequestWithStatus: OutlineRequestWithStatus = {
+      ...outlineRequestData,
+      status: statusData?.status,
+      metadata: statusData?.metadata as Record<string, unknown> | null,
+    };
+
+    setOutlineRequest(outlineRequestWithStatus);
 
     // Fetch associated lessons via mapping table
     const { data: mappings, error: mappingError } = await supabase
@@ -66,8 +100,29 @@ export default function LessonPage() {
 
       if (lessonsError) {
         console.error('Error fetching lessons:', lessonsError);
-      } else {
-        setLessons(lessonsData || []);
+      } else if (lessonsData) {
+        // Fetch statuses for all lessons
+        const { data: lessonStatuses, error: lessonStatusError } = await supabase
+          .from('lesson_status_record')
+          .select('lesson_id, status, metadata')
+          .in('lesson_id', lessonIds)
+          .order('created_at', { ascending: false });
+
+        if (lessonStatusError) {
+          console.error('Error fetching lesson statuses:', lessonStatusError);
+        }
+
+        // Combine lessons with their latest status
+        const lessonsWithStatus: LessonWithStatus[] = lessonsData.map((lesson) => {
+          const latestStatus = lessonStatuses?.find((s) => s.lesson_id === lesson.id);
+          return {
+            ...lesson,
+            status: latestStatus?.status,
+            metadata: latestStatus?.metadata as Record<string, unknown> | null,
+          };
+        });
+
+        setLessons(lessonsWithStatus);
       }
     }
 
@@ -151,17 +206,19 @@ export default function LessonPage() {
                   <CardTitle className="text-2xl">{outlineRequest.title || 'Untitled'}</CardTitle>
                   <CardDescription className="mt-2">
                     Created:{' '}
-                    {new Date(outlineRequest.created_at).toLocaleDateString('en-US', {
-                      month: 'long',
-                      day: 'numeric',
-                      year: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
+                    {outlineRequest.created_at
+                      ? new Date(outlineRequest.created_at).toLocaleDateString('en-US', {
+                          month: 'long',
+                          day: 'numeric',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      : 'N/A'}
                   </CardDescription>
                 </div>
                 <Badge variant={outlineRequest.status === 'completed' ? 'default' : 'secondary'}>
-                  {outlineRequest.status}
+                  {outlineRequest.status || 'unknown'}
                 </Badge>
               </div>
             </CardHeader>
@@ -173,7 +230,7 @@ export default function LessonPage() {
               <CardTitle>Lesson Outline</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="whitespace-pre-wrap text-muted-foreground">{outlineRequest.outline}</p>
+              <p className="whitespace-pre-wrap text-muted-foreground">{String(outlineRequest.outline)}</p>
             </CardContent>
           </Card>
 
@@ -190,14 +247,14 @@ export default function LessonPage() {
                       <CardHeader>
                         <div className="flex items-center justify-between">
                           <CardTitle className="text-lg">Lesson {lesson.id.slice(0, 8)}</CardTitle>
-                          <Badge variant={lesson.status === 'ready_to_use' ? 'default' : 'secondary'}>
-                            {lesson.status}
+                          <Badge variant={lesson.status === 'lesson.ready_to_use' ? 'default' : 'secondary'}>
+                            {lesson.status || 'unknown'}
                           </Badge>
                         </div>
                       </CardHeader>
                       <CardContent>
                         <p className="text-sm text-muted-foreground">
-                          Created: {new Date(lesson.created_at).toLocaleString()}
+                          Created: {lesson.created_at ? new Date(lesson.created_at).toLocaleString() : 'N/A'}
                         </p>
                       </CardContent>
                     </Card>
@@ -208,32 +265,86 @@ export default function LessonPage() {
           )}
 
           {/* Error Display */}
-          {outlineRequest.status === 'error' && outlineRequest.error && (
+          {outlineRequest.status === 'error' && outlineRequest.metadata && (
             <Card className="border-destructive">
               <CardHeader>
-                <CardTitle className="text-destructive">Error</CardTitle>
+                <CardTitle className="text-destructive">System Error</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-destructive">
-                  {typeof outlineRequest.error === 'object'
-                    ? outlineRequest.error.message || JSON.stringify(outlineRequest.error)
-                    : outlineRequest.error}
+                  {(() => {
+                    if (
+                      typeof outlineRequest.metadata === 'object' &&
+                      outlineRequest.metadata !== null &&
+                      !Array.isArray(outlineRequest.metadata) &&
+                      'message' in outlineRequest.metadata &&
+                      typeof outlineRequest.metadata.message === 'string'
+                    ) {
+                      return outlineRequest.metadata.message || JSON.stringify(outlineRequest.metadata);
+                    }
+                    return JSON.stringify(outlineRequest.metadata);
+                  })()}
                 </p>
               </CardContent>
             </Card>
           )}
 
-          {/* Processing Status */}
-          {outlineRequest.status !== 'completed' && outlineRequest.status !== 'error' && (
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-center gap-2 py-4">
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  <p className="text-muted-foreground">Lesson is being generated... ({outlineRequest.status})</p>
-                </div>
+          {/* Failed Display */}
+          {outlineRequest.status === 'failed' && outlineRequest.metadata && (
+            <Card className="border-yellow-500">
+              <CardHeader>
+                <CardTitle className="text-yellow-600">Validation Failed</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-yellow-600">
+                  {(() => {
+                    if (
+                      typeof outlineRequest.metadata === 'object' &&
+                      outlineRequest.metadata !== null &&
+                      !Array.isArray(outlineRequest.metadata) &&
+                      'failureReason' in outlineRequest.metadata &&
+                      typeof outlineRequest.metadata.failureReason === 'string'
+                    ) {
+                      return outlineRequest.metadata.failureReason;
+                    }
+                    return 'The outline did not meet validation requirements';
+                  })()}
+                </p>
+                {(() => {
+                  if (
+                    typeof outlineRequest.metadata === 'object' &&
+                    outlineRequest.metadata !== null &&
+                    'details' in outlineRequest.metadata &&
+                    Array.isArray(outlineRequest.metadata.details)
+                  ) {
+                    return (
+                      <ul className="mt-2 list-disc list-inside text-sm text-muted-foreground">
+                        {outlineRequest.metadata.details.map((detail: unknown, idx: number) => (
+                          <li key={idx}>{String(detail)}</li>
+                        ))}
+                      </ul>
+                    );
+                  }
+                  return null;
+                })()}
               </CardContent>
             </Card>
           )}
+
+          {/* Processing Status */}
+          {outlineRequest.status !== 'completed' &&
+            outlineRequest.status !== 'error' &&
+            outlineRequest.status !== 'failed' &&
+            outlineRequest.status !== 'outline.blocks.generated' && (
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-center gap-2 py-4">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <p className="text-muted-foreground">Processing... ({outlineRequest.status})</p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
         </div>
       </div>
 

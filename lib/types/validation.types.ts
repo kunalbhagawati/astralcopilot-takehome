@@ -2,9 +2,9 @@
  * Enhanced validation types for LLM-based outline validation
  *
  * These types support multi-stage validation:
- * 1. Intent classification (numeric scores: positiveScore, negativeScore)
- * 2. Specificity analysis (numeric score: specificityScore, boolean: matchesTaxonomy)
- * 3. Actionability checks (boolean: actionable, content type, complexity)
+ * 1. Safety classification (single gradient: safetyScore 0.0-1.0)
+ * 2. Specificity analysis (numeric score: specificityScore)
+ * 3. Actionability checks (boolean: actionable, age range: [min, max])
  *
  * Philosophy: LLM provides numeric scores (0.0-1.0), server applies thresholds
  */
@@ -15,7 +15,7 @@ import { z } from 'zod';
  * Topic hierarchy structure for educational content
  * Simplified structure: topic → domains[]
  *
- * Must match predefined taxonomy in lib/config/topic-taxonomy.ts
+ * LLM determines topic and domains from outline content (no predefined taxonomy)
  */
 export interface TopicHierarchy {
   /** Specific learning topic (e.g., "React Hooks", "Quadratic Equations") */
@@ -25,18 +25,20 @@ export interface TopicHierarchy {
 }
 
 /**
- * Intent classification result
- * Determines if the user has positive learning intent
- * Uses numeric scores instead of string classifications
+ * Safety classification result
+ * Determines if the outline content is safe and appropriate for children (ages 5-16)
+ * Uses single gradient score (0.0-1.0)
+ *
+ * Examples:
+ * - 1.0 = Safe educational content (e.g., biological reproduction taught in schools)
+ * - 0.0 = Unsafe/inappropriate content (e.g., pornography, violence, harmful activities)
  */
-export interface IntentClassification {
-  /** Probability this is genuine positive educational intent (0.0-1.0) */
-  positiveScore: number;
-  /** Probability this has harmful/negative intent (0.0-1.0) */
-  negativeScore: number;
+export interface SafetyClassification {
+  /** Safety gradient: 0.0 = unsafe/inappropriate for children, 1.0 = safe/appropriate educational content */
+  safetyScore: number;
   /** Confidence in the assessment (0.0-1.0) */
   confidence: number;
-  /** Explanation for the scores */
+  /** Explanation for the score */
   reasoning: string;
   /** Optional flags for potential issues */
   flags?: string[];
@@ -45,16 +47,17 @@ export interface IntentClassification {
 /**
  * Specificity analysis result
  * Checks if the outline is specific enough for lesson generation
- * Uses numeric score instead of string classification
+ *
+ * Topic must be specific enough to:
+ * - Generate ≤100 actionable teaching blocks
+ * - Cover top-level topics comprehensively
  */
 export interface SpecificityAnalysis {
   /** Specificity score: 1.0 = very specific, 0.0 = very vague (0.0-1.0) */
   specificityScore: number;
-  /** Whether detected topic matches predefined taxonomy (boolean yes/no) */
-  matchesTaxonomy: boolean;
-  /** Detected topic hierarchy */
+  /** Detected topic hierarchy (LLM-determined from outline content) */
   detectedHierarchy: TopicHierarchy;
-  /** Suggestions for improvement if low score or not matching taxonomy */
+  /** Suggestions for improvement if low score */
   suggestions?: string[];
 }
 
@@ -69,8 +72,8 @@ export interface SpecificityAnalysis {
 export interface ActionabilityCheck {
   /** Is the outline actionable? */
   actionable: boolean;
-  /** Estimated complexity */
-  estimatedComplexity: 'simple' | 'moderate' | 'complex';
+  /** Target age range [minAge, maxAge] - must be within pedagogy range [5, 16] */
+  targetAgeRange: [number, number];
   /** List of identified requirements */
   requirements: string[];
   /** Missing information if not actionable */
@@ -79,12 +82,12 @@ export interface ActionabilityCheck {
 
 /**
  * Enhanced validation result combining all validation aspects
+ *
+ * Note: LLM generates scores only. Server computes validity via applyValidationThresholds().
  */
 export interface EnhancedValidationResult {
-  /** Overall validation status */
-  valid: boolean;
-  /** Intent classification */
-  intent: IntentClassification;
+  /** Safety classification */
+  safety: SafetyClassification;
   /** Specificity analysis */
   specificity: SpecificityAnalysis;
   /** Actionability check */
@@ -123,13 +126,12 @@ export interface StructuredOutline {
 }
 
 /**
- * Zod schema for IntentClassification
+ * Zod schema for SafetyClassification
  * Used for structured output validation from LLM
- * Validates numeric scores instead of string enums
+ * Validates single safety gradient (0.0-1.0)
  */
-export const IntentClassificationSchema = z.object({
-  positiveScore: z.number().min(0).max(1),
-  negativeScore: z.number().min(0).max(1),
+export const SafetyClassificationSchema = z.object({
+  safetyScore: z.number().min(0).max(1),
   confidence: z.number().min(0).max(1),
   reasoning: z.string(),
   flags: z.array(z.string()).optional(),
@@ -145,11 +147,10 @@ export const TopicHierarchySchema = z.object({
 
 /**
  * Zod schema for SpecificityAnalysis
- * Validates numeric score instead of string enum
+ * Validates numeric score (topic must be specific enough for ≤100 blocks)
  */
 export const SpecificityAnalysisSchema = z.object({
   specificityScore: z.number().min(0).max(1),
-  matchesTaxonomy: z.boolean(),
   detectedHierarchy: TopicHierarchySchema,
   suggestions: z.array(z.string()).optional(),
 });
@@ -159,17 +160,18 @@ export const SpecificityAnalysisSchema = z.object({
  */
 export const ActionabilityCheckSchema = z.object({
   actionable: z.boolean(),
-  estimatedComplexity: z.enum(['simple', 'moderate', 'complex']),
+  targetAgeRange: z.tuple([z.number().int().min(1).max(100), z.number().int().min(1).max(100)]),
   requirements: z.array(z.string()),
   missingInfo: z.array(z.string()).optional(),
 });
 
 /**
  * Zod schema for EnhancedValidationResult
+ *
+ * Note: Does not include 'valid' field - server computes validity via applyValidationThresholds().
  */
 export const EnhancedValidationResultSchema = z.object({
-  valid: z.boolean(),
-  intent: IntentClassificationSchema,
+  safety: SafetyClassificationSchema,
   specificity: SpecificityAnalysisSchema,
   actionability: ActionabilityCheckSchema,
   errors: z.array(z.string()).optional(),
@@ -213,4 +215,9 @@ export const QualityValidationResultSchema = z.object({
   errors: z.array(z.string()),
   suggestions: z.array(z.string()),
   qualityScore: z.number().min(0).max(1),
-});
+}); // Validation result (simple valid/errors structure used by pipeline)
+
+export interface ValidationResult {
+  valid: boolean;
+  errors?: string[];
+}

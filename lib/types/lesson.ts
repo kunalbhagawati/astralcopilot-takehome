@@ -1,47 +1,13 @@
-// Outline request status types matching the database enum
-export type OutlineRequestStatus =
-  | 'submitted'
-  | 'validating_outline'
-  | 'generating_lessons'
-  | 'validating_lessons'
-  | 'completed'
-  | 'error';
+// Re-export database types as type aliases
+// Source of truth: lib/types/database.types.ts (auto-generated from Supabase)
+import type { Database, Tables } from './database.types';
 
-// Lesson status types matching the database enum
-export type LessonStatus = 'generated' | 'validating' | 'ready_to_use' | 'error';
+// Enum type aliases for convenience
+export type OutlineRequestStatus = Database['public']['Enums']['outline_request_status'];
+export type LessonStatus = Database['public']['Enums']['lesson_status'];
 
-// Outline request database record
-export interface OutlineRequest {
-  id: string;
-  title: string | null;
-  outline: string;
-  status: OutlineRequestStatus;
-  error: { message: string; errors?: string[] } | null; // JSONB error data
-  created_at: string;
-  updated_at: string;
-}
-
-// Lesson database record
-export interface Lesson {
-  id: string;
-  status: LessonStatus;
-  created_at: string;
-  updated_at: string;
-}
-
-// Mapping table record
-export interface MappingOutlineRequestLesson {
-  id: string;
-  outline_request_id: string;
-  lesson_id: string;
-  created_at: string;
-}
-
-// Validation result (simple valid/errors structure used by pipeline)
-export interface ValidationResult {
-  valid: boolean;
-  errors?: string[];
-}
-
-// NOTE: For actual lesson content structure, use types from lesson-structure.types.ts
-// This file only contains DB record types and simple validation results
+// Database table type aliases
+// These are direct aliases to ensure type safety and match database schema exactly
+export type OutlineRequest = Tables<'outline_request'>;
+export type Lesson = Tables<'lesson'>;
+export type MappingOutlineRequestLesson = Tables<'mapping_outline_request_lesson'>;

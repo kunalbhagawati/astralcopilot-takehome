@@ -1,38 +1,65 @@
-import { createClient } from '@/lib/supabase/server';
-import { LessonStatus, OutlineRequestStatus } from '@/lib/types/lesson';
+import { type BlockGenerationInput } from '@/lib/types/actionable-blocks.types';
 import { createActor } from 'xstate';
-import { getAILLMClient } from './adapters/ai-llm-client';
-import { getLessonContentValidator } from './adapters/lesson-content-validator';
-import { getOutlineValidator, type EnhancedOutlineValidationResult } from './adapters/outline-validator';
-import { mapStateToStatus as mapOutlineStateToStatus, outlineRequestMachine } from './machines/outline-request.machine';
+import { type LLMClient, createLLMClient } from './adapters/llm-client';
+import {
+  type EnhancedOutlineValidationResult,
+  type OutlineValidator,
+  getOutlineValidator,
+} from './adapters/outline-validator';
+import { logger } from './logger';
+import { outlineRequestMachine } from './machines/outline-request.machine';
+import { OutlineRequestRepository } from './repositories/outline-request.repository';
+import { extractValidationFeedback } from './validation-rules.service';
 
 /**
- * State machine for lesson generation
- * Manages the async background process of generating a lesson from an outline request
+ * Outline Request Pipeline
+ *
+ * Orchestrates the 2-stage LLM flow for generating actionable blocks:
+ * 1. Validation stage: LLM validates outline, server applies thresholds
+ * 2. Blocks generation stage: LLM generates teaching points
+ *
+ * State machine stops at `outline.blocks.generated` (lesson generation comes later).
+ *
+ * Uses new DB status enum values from database.types.ts:
+ * - submitted → outline.validating → outline.validated → outline.blocks.generating → outline.blocks.generated
+ *
+ * Final states:
+ * - 'failed': Flow can't proceed based on LLM output (outline validation fails, etc.)
+ * - 'error': System/technical error (network error, LLM API down, etc.)
+ *
+ * Refactored with dependency injection for testability and loose coupling.
  * Uses XState v5.23.0 for state management - https://statelyai.github.io/xstate/
  */
 export class OutlineRequestPipeline {
-  private validator = getOutlineValidator();
-  private aiClient = getAILLMClient();
-  private lessonValidator = getLessonContentValidator();
+  constructor(
+    private validator: OutlineValidator,
+    private llmClient: LLMClient,
+    private outlineRepo: OutlineRequestRepository,
+  ) {}
 
   /**
-   * Processes an outline request through the state machine
+   * Processes an outline request through the 2-stage LLM flow
+   *
+   * Stage 1: Validation
+   * - LLM generates validation scores/feedback
+   * - Server applies business rules (thresholds)
+   * - If validation fails → 'failed' state (flow failure)
+   *
+   * Stage 2: Blocks Generation
+   * - LLM generates actionable teaching blocks (teaching points)
+   * - Store blocks in outline_request.content_blocks
+   * - Mark as outline.blocks.generated
+   * - STOP (no lesson generation yet)
+   *
    * This runs asynchronously in the background
    */
   async processOutlineRequest(outlineRequestId: string): Promise<void> {
     try {
-      const supabase = await createClient();
+      // Fetch the outline request using repository
+      const outlineRequest = await this.outlineRepo.findById(outlineRequestId);
 
-      // Fetch the outline request
-      const { data: outlineRequest, error: fetchError } = await supabase
-        .from('outline_request')
-        .select('*')
-        .eq('id', outlineRequestId)
-        .single();
-
-      if (fetchError || !outlineRequest) {
-        console.error('Failed to fetch outline request:', fetchError);
+      if (!outlineRequest) {
+        logger.error('Outline request not found:', outlineRequestId);
         return;
       }
 
@@ -46,191 +73,190 @@ export class OutlineRequestPipeline {
 
       outlineActor.start();
 
-      // Subscribe to snapshot changes and sync with database
-      outlineActor.subscribe((snapshot) => {
-        const status = mapOutlineStateToStatus(snapshot.value);
-        const error = snapshot.context.error;
-        this.updateOutlineRequestStatus(outlineRequestId, status, error).catch((err) => {
-          console.error('Failed to update outline request status:', err);
-        });
-      });
+      // ========================================
+      // STAGE 1: VALIDATION
+      // ========================================
 
-      // Transition: submitted -> validating_outline
+      // Transition: submitted -> outline.validating
       outlineActor.send({ type: 'outline.validation.start' });
 
-      // State: VALIDATING_OUTLINE
-      const validationResult = await this.validator.validate(outlineRequest.outline);
+      // Record validation started (no metadata yet)
+      await this.outlineRepo.createStatusRecord(outlineRequestId, 'outline.validating', undefined);
 
-      if (!validationResult.valid) {
-        // Store detailed validation errors if using LLM validator
-        const errorData: { message: string; errors?: string[]; validationDetails?: unknown } = {
-          message: 'Validation failed',
-          errors: validationResult.errors,
+      // Step 1: Validate outline (LLM + thresholds applied by validator)
+      let validationResult;
+      try {
+        validationResult = await this.validator.validate(outlineRequest.outline);
+      } catch (error) {
+        // System/technical error during validation
+        const errorMetadata = {
+          message: error instanceof Error ? error.message : 'Validation system error',
+          error: error instanceof Error ? error.name : 'UnknownError',
+          context: {
+            stage: 'outline_validation',
+            outlineRequestId,
+          },
         };
 
-        // Add enhanced validation details if available (from LLMOutlineValidator)
-        const enhancedResult = validationResult as EnhancedOutlineValidationResult;
-        if (enhancedResult.enhancedResult) {
-          errorData.validationDetails = {
-            intent: enhancedResult.enhancedResult.intent,
-            specificity: enhancedResult.enhancedResult.specificity,
-            actionability: enhancedResult.enhancedResult.actionability,
-          };
-        }
+        await this.outlineRepo.createStatusRecord(outlineRequestId, 'error', errorMetadata);
+
+        outlineActor.send({
+          type: 'outline.validation.error',
+          metadata: errorMetadata,
+        });
+        return;
+      }
+
+      // Extract enhanced result for blocks generation
+      const enhancedResult = (validationResult as EnhancedOutlineValidationResult).enhancedResult;
+
+      if (!validationResult.valid) {
+        // Validation failed - LLM output indicates outline doesn't meet requirements
+        // This is a FLOW FAILURE, not a system error → move to 'failed' state
+
+        const failedMetadata = {
+          llmOutput: enhancedResult || null,
+          failureReason: 'Validation failed',
+          details: validationResult.errors || [],
+        };
+
+        await this.outlineRepo.createStatusRecord(outlineRequestId, 'failed', failedMetadata);
 
         outlineActor.send({
           type: 'outline.validation.failed',
-          error: errorData,
+          metadata: failedMetadata,
         });
         return;
       }
 
-      // Transition: validating_outline -> generating_lessons
+      // Check if enhanced result exists (should always be present for valid LLM validation)
+      if (!enhancedResult) {
+        // System error - no AI output received (this shouldn't happen if valid=true)
+        const errorMetadata = {
+          message: 'Validation failed: No enhanced result available',
+          error: 'MissingLLMOutput',
+          context: {
+            stage: 'outline_validation',
+            outlineRequestId,
+            validationResult,
+          },
+        };
+
+        await this.outlineRepo.createStatusRecord(outlineRequestId, 'error', errorMetadata);
+
+        outlineActor.send({
+          type: 'outline.validation.error',
+          metadata: errorMetadata,
+        });
+        return;
+      }
+
+      // Validation passed - store LLM output in metadata and transition to outline.validated
+      await this.outlineRepo.createStatusRecord(outlineRequestId, 'outline.validating', enhancedResult);
+
+      // Proceed to outline.validated state
       outlineActor.send({ type: 'outline.validation.success' });
 
-      // State: GENERATING_LESSON - Use AI LLM client to generate lesson
-      const lessonContent = await this.aiClient.generateLesson(outlineRequest.outline);
+      // Record outline.validated status (no additional metadata needed)
+      await this.outlineRepo.createStatusRecord(outlineRequestId, 'outline.validated', undefined);
 
-      // Create lesson record with content
-      const { data: lesson, error: lessonError } = await supabase
-        .from('lesson')
-        .insert({
-          status: 'generated' as LessonStatus,
-          content: lessonContent,
-        })
-        .select()
-        .single();
+      // ========================================
+      // STAGE 2: BLOCKS GENERATION
+      // ========================================
 
-      if (lessonError || !lesson) {
-        console.error('Failed to create lesson:', lessonError);
-        outlineActor.send({
-          type: 'outline.lesson.generation.failed',
-          error: { message: 'Failed to create lesson record' },
-        });
-        return;
-      }
+      // Transition: outline.validated -> outline.blocks.generating
+      outlineActor.send({ type: 'blocks.generation.start' });
 
-      // Create mapping between outline request and lesson
-      const { error: mappingError } = await supabase.from('mapping_outline_request_lesson').insert({
-        outline_request_id: outlineRequestId,
-        lesson_id: lesson.id,
-      });
+      // Record blocks generation started (no metadata yet)
+      await this.outlineRepo.createStatusRecord(outlineRequestId, 'outline.blocks.generating', undefined);
 
-      if (mappingError) {
-        console.error('Failed to create mapping:', mappingError);
-        outlineActor.send({
-          type: 'outline.lesson.generation.failed',
-          error: { message: 'Failed to create mapping' },
-        });
-        return;
-      }
+      // Prepare input for blocks generation
+      const feedback = extractValidationFeedback(enhancedResult);
 
-      // Transition: generating_lessons -> validating_lessons (nested state: lesson_validating)
-      outlineActor.send({ type: 'outline.lesson.generation.success', lessonId: lesson.id });
+      const blocksInput: BlockGenerationInput = {
+        originalOutline: outlineRequest.outline,
+        validationFeedback: feedback,
+      };
 
-      // State: VALIDATING_LESSONS.LESSON_VALIDATING
-      // Update lesson status to validating
-      await this.updateLessonStatus(lesson.id, 'validating');
-
-      // Validate lesson content structure
-      const structureValidation = await this.lessonValidator.validate(lessonContent);
-
-      if (!structureValidation.valid) {
-        await this.updateLessonStatus(lesson.id, 'error', {
-          message: 'Lesson content validation failed: ' + (structureValidation.errors?.join(', ') || 'Unknown error'),
-        });
-        outlineActor.send({
-          type: 'outline.lesson.validation.failed',
-          error: {
-            message: 'Lesson content validation failed: ' + (structureValidation.errors?.join(', ') || 'Unknown error'),
+      // Step 2a: Generate actionable blocks (teaching points)
+      let blocksResult;
+      try {
+        blocksResult = await this.llmClient.generateBlocks(blocksInput);
+      } catch (error) {
+        // System/technical error during blocks generation
+        const errorMetadata = {
+          message: error instanceof Error ? error.message : 'Blocks generation system error',
+          error: error instanceof Error ? error.name : 'UnknownError',
+          context: {
+            stage: 'blocks_generation',
+            outlineRequestId,
           },
-        });
-        return;
-      }
+        };
 
-      // Validate lesson quality using AI
-      const qualityValidation = await this.aiClient.validateLesson(lessonContent);
+        await this.outlineRepo.createStatusRecord(outlineRequestId, 'error', errorMetadata);
 
-      if (!qualityValidation.valid) {
-        await this.updateLessonStatus(lesson.id, 'error', {
-          message: 'Lesson quality validation failed: ' + (qualityValidation.errors?.join(', ') || 'Unknown error'),
-        });
         outlineActor.send({
-          type: 'outline.lesson.validation.failed',
-          error: {
-            message: 'Lesson quality validation failed: ' + (qualityValidation.errors?.join(', ') || 'Unknown error'),
-          },
+          type: 'blocks.generation.error',
+          metadata: errorMetadata,
         });
         return;
       }
 
-      // Update lesson status to ready_to_use
-      await this.updateLessonStatus(lesson.id, 'ready_to_use');
+      // Step 2b: Store blocks in outline_request.content_blocks
+      await this.outlineRepo.updateBlocks(outlineRequestId, blocksResult);
 
-      // Transition: validating_lessons.lesson_validating -> validating_lessons.lesson_ready
-      // Then automatically transitions to completed
-      outlineActor.send({ type: 'outline.lesson.validation.success' });
+      // Step 2c: Store blocks in metadata for audit trail
+      await this.outlineRepo.createStatusRecord(outlineRequestId, 'outline.blocks.generating', blocksResult);
 
-      // Stop the actor after completion
+      // Transition: outline.blocks.generating -> outline.blocks.generated
+      outlineActor.send({ type: 'blocks.generation.success' });
+
+      // Record final outline.blocks.generated status
+      await this.outlineRepo.createStatusRecord(outlineRequestId, 'outline.blocks.generated', undefined);
+
+      // STOP HERE - no lesson generation yet
+      // State machine should transition to outline.blocks.generated (final state)
       outlineActor.stop();
     } catch (error) {
-      console.error('Error processing outline request:', error);
-      await this.updateOutlineRequestStatus(outlineRequestId, 'error', {
+      // Catch-all for unexpected errors not caught above
+      logger.error('Error processing outline request:', error);
+
+      const errorMetadata = {
         message: error instanceof Error ? error.message : 'Unknown error occurred',
-      });
-    }
-  }
+        error: error instanceof Error ? error.name : 'UnknownError',
+        context: {
+          outlineRequestId,
+        },
+      };
 
-  /**
-   * Updates the outline request status in the database
-   */
-  private async updateOutlineRequestStatus(
-    outlineRequestId: string,
-    status: OutlineRequestStatus,
-    error?: { message: string; errors?: string[] },
-  ): Promise<void> {
-    const supabase = await createClient();
-
-    const updateData: { status: OutlineRequestStatus; error?: { message: string; errors?: string[] } } = { status };
-    if (error) {
-      updateData.error = error;
-    }
-
-    const { error: updateError } = await supabase.from('outline_request').update(updateData).eq('id', outlineRequestId);
-
-    if (updateError) {
-      console.error(`Failed to update outline request status to ${status}:`, updateError);
-    }
-  }
-
-  /**
-   * Updates the lesson status in the database
-   */
-  private async updateLessonStatus(lessonId: string, status: LessonStatus, error?: { message: string }): Promise<void> {
-    const supabase = await createClient();
-
-    const updateData: { status: LessonStatus; error?: { message: string } } = { status };
-    if (error) {
-      updateData.error = error;
-    }
-
-    const { error: updateError } = await supabase.from('lesson').update(updateData).eq('id', lessonId);
-
-    if (updateError) {
-      console.error(`Failed to update lesson status to ${status}:`, updateError);
+      await this.outlineRepo.createStatusRecord(outlineRequestId, 'error', errorMetadata);
     }
   }
 }
 
 /**
- * Triggers the lesson generation process in the background
+ * Create pipeline with default dependencies
+ *
+ * Factory function that wires up all dependencies.
+ * For testing, construct OutlineRequestPipeline directly with mocks.
+ *
+ * @returns Configured pipeline instance
+ */
+export const createPipeline = (): OutlineRequestPipeline => {
+  return new OutlineRequestPipeline(getOutlineValidator(), createLLMClient(), new OutlineRequestRepository());
+};
+
+/**
+ * Triggers the blocks generation process in the background
  * This function returns immediately while processing continues
+ *
+ * @param outlineRequestId - ID of the outline request to process
  */
 export async function processOutline(outlineRequestId: string): Promise<void> {
-  const pipeline = new OutlineRequestPipeline();
+  const pipeline = createPipeline();
 
   // Run the process in the background (don't await)
   pipeline.processOutlineRequest(outlineRequestId).catch((error) => {
-    console.error('Background lesson generation failed:', error);
+    logger.error('Background blocks generation failed:', error);
   });
 }

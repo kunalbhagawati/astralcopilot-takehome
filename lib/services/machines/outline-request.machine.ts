@@ -1,6 +1,6 @@
 // Using XState v5.23.0 - https://statelyai.github.io/xstate/
-import { setup, assign } from 'xstate';
 import { OutlineRequestStatus } from '@/lib/types/lesson';
+import { assign, setup } from 'xstate';
 
 /**
  * Context for the outline request state machine
@@ -8,11 +8,7 @@ import { OutlineRequestStatus } from '@/lib/types/lesson';
 interface OutlineRequestContext {
   outlineRequestId: string;
   outline: string;
-  lessonId?: string;
-  error?: {
-    message: string;
-    errors?: string[];
-  };
+  metadata?: unknown;
 }
 
 /**
@@ -21,27 +17,55 @@ interface OutlineRequestContext {
 type OutlineRequestEvent =
   | { type: 'outline.validation.start' }
   | { type: 'outline.validation.success' }
-  | { type: 'outline.validation.failed'; error: { message: string; errors?: string[] } }
-  | { type: 'outline.lesson.generation.start' }
-  | { type: 'outline.lesson.generation.success'; lessonId: string }
-  | { type: 'outline.lesson.generation.failed'; error: { message: string } }
-  | { type: 'outline.lesson.validation.success' }
-  | { type: 'outline.lesson.validation.failed'; error: { message: string } };
+  | {
+      type: 'outline.validation.failed';
+      metadata: {
+        llmOutput?: unknown;
+        failureReason: string;
+        details?: string[];
+      };
+    }
+  | {
+      type: 'outline.validation.error';
+      metadata: {
+        message: string;
+        error: string;
+        context?: unknown;
+      };
+    }
+  | { type: 'blocks.generation.start' }
+  | { type: 'blocks.generation.success' }
+  | {
+      type: 'blocks.generation.failed';
+      metadata: {
+        llmOutput?: unknown;
+        failureReason: string;
+        details?: string[];
+      };
+    }
+  | {
+      type: 'blocks.generation.error';
+      metadata: {
+        message: string;
+        error: string;
+        context?: unknown;
+      };
+    };
 
 /**
  * State machine for managing the outline request lifecycle
  *
- * Uses nested states for lesson validation within validating_lessons parent state
+ * Internal flow (with underscores):
+ * submitted → outline_validating → outline_validated → outline_blocks_generating → outline_blocks_generated
+ *                ↓                        ↓                        ↓
+ *              failed/error            failed/error            failed/error
  *
- * Flow:
- * submitted → validating_outline → generating_lessons → validating_lessons (parent) → completed
- *                ↓                        ↓                     ↓
- *              error                    error                 error
+ * These map to database statuses (with dots):
+ * submitted → outline.validating → outline.validated → outline.blocks.generating → outline.blocks.generated
  *
- * validating_lessons contains nested states:
- *   - lesson_validating → lesson_ready
- *         ↓
- *       error
+ * Final states: failed, error
+ * - failed: Flow can't proceed based on LLM output (outline validation fails, etc.)
+ * - error: System/technical error (network error, LLM API down, etc.)
  */
 export const outlineRequestMachine = setup({
   types: {
@@ -50,31 +74,23 @@ export const outlineRequestMachine = setup({
     input: {} as OutlineRequestContext,
   },
   actions: {
-    // Store error in context
-    storeError: assign({
-      error: ({ event }) => {
+    // Store metadata in context
+    storeMetadata: assign({
+      metadata: ({ event }) => {
         if (
           event.type === 'outline.validation.failed' ||
-          event.type === 'outline.lesson.generation.failed' ||
-          event.type === 'outline.lesson.validation.failed'
+          event.type === 'outline.validation.error' ||
+          event.type === 'blocks.generation.failed' ||
+          event.type === 'blocks.generation.error'
         ) {
-          return event.error;
+          return event.metadata;
         }
         return undefined;
       },
     }),
-    // Store lesson ID in context
-    storeLessonId: assign({
-      lessonId: ({ event }) => {
-        if (event.type === 'outline.lesson.generation.success') {
-          return event.lessonId;
-        }
-        return undefined;
-      },
-    }),
-    // Clear error when transitioning out of error state
-    clearError: assign({
-      error: undefined,
+    // Clear metadata when transitioning
+    clearMetadata: assign({
+      metadata: undefined,
     }),
   },
 }).createMachine({
@@ -84,52 +100,46 @@ export const outlineRequestMachine = setup({
   states: {
     submitted: {
       on: {
-        'outline.validation.start': 'validating_outline',
+        'outline.validation.start': 'outline_validating',
       },
     },
-    validating_outline: {
+    outline_validating: {
       on: {
-        'outline.validation.success': 'generating_lessons',
+        'outline.validation.success': 'outline_validated',
         'outline.validation.failed': {
+          target: 'failed',
+          actions: 'storeMetadata',
+        },
+        'outline.validation.error': {
           target: 'error',
-          actions: 'storeError',
+          actions: 'storeMetadata',
         },
       },
     },
-    generating_lessons: {
+    outline_validated: {
       on: {
-        'outline.lesson.generation.success': {
-          target: 'validating_lessons',
-          actions: 'storeLessonId',
+        'blocks.generation.start': 'outline_blocks_generating',
+      },
+    },
+    outline_blocks_generating: {
+      on: {
+        'blocks.generation.success': {
+          target: 'outline_blocks_generated',
         },
-        'outline.lesson.generation.failed': {
+        'blocks.generation.failed': {
+          target: 'failed',
+          actions: 'storeMetadata',
+        },
+        'blocks.generation.error': {
           target: 'error',
-          actions: 'storeError',
+          actions: 'storeMetadata',
         },
       },
     },
-    // Parent state containing nested lesson validation states
-    validating_lessons: {
-      initial: 'lesson_validating',
-      states: {
-        lesson_validating: {
-          on: {
-            'outline.lesson.validation.success': 'lesson_ready',
-            'outline.lesson.validation.failed': {
-              target: '#outlineRequest.error',
-              actions: 'storeError',
-            },
-          },
-        },
-        lesson_ready: {
-          // Automatically transition to completed when lesson is ready
-          always: {
-            target: '#outlineRequest.completed',
-          },
-        },
-      },
+    outline_blocks_generated: {
+      type: 'final',
     },
-    completed: {
+    failed: {
       type: 'final',
     },
     error: {
@@ -140,14 +150,14 @@ export const outlineRequestMachine = setup({
 
 /**
  * Maps XState state values to OutlineRequestStatus enum
- * Handles nested states by mapping them to their parent state
  *
- * XState v5 returns state.value as either:
- * - A string for flat states: 'submitted', 'validating_outline', etc.
- * - An object for nested states: { validating_lessons: 'lesson_validating' }
+ * State machine uses underscores internally (e.g., 'outline_validating')
+ * Database uses dots (e.g., 'outline.validating')
+ *
+ * This function converts from state machine format to database format
  */
 export const mapStateToStatus = (state: string | object): OutlineRequestStatus => {
-  // Handle nested state objects (e.g., { validating_lessons: 'lesson_validating' })
+  // Handle nested state objects
   if (typeof state === 'object' && state !== null) {
     const stateKeys = Object.keys(state);
     if (stateKeys.length > 0) {
@@ -155,6 +165,16 @@ export const mapStateToStatus = (state: string | object): OutlineRequestStatus =
     }
   }
 
-  // Handle flat state strings
-  return state as OutlineRequestStatus;
+  // Convert underscore format to dot format
+  const stateMap: Record<string, OutlineRequestStatus> = {
+    submitted: 'submitted',
+    outline_validating: 'outline.validating',
+    outline_validated: 'outline.validated',
+    outline_blocks_generating: 'outline.blocks.generating',
+    outline_blocks_generated: 'outline.blocks.generated',
+    failed: 'failed',
+    error: 'error',
+  };
+
+  return stateMap[state as string] || (state as OutlineRequestStatus);
 };

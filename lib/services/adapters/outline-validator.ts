@@ -1,13 +1,8 @@
-import { ValidationResult } from '@/lib/types/lesson';
+import { ValidationResult } from '@/lib/types/validation.types';
 import { isEmpty, isNil } from 'ramda';
 import { LLMClient, createLLMClient } from './llm-client';
 import type { EnhancedValidationResult } from '@/lib/types/validation.types';
-import {
-  VALIDATION_THRESHOLDS,
-  isIntentAcceptable,
-  isSpecificityAcceptable,
-  getThresholdDescriptions,
-} from '../../config/validation-thresholds';
+import { applyValidationThresholds } from '../validation-rules.service';
 
 /**
  * Adapter interface for outline validation systems
@@ -45,8 +40,12 @@ export class SimpleOutlineValidator implements OutlineValidator {
 }
 
 /**
- * LLM-based outline validator
- * Validates intent, specificity, and actionability using LLM
+ * LLM-based outline validator (adapter only)
+ *
+ * This adapter calls the LLM to get validation scores/feedback.
+ * Business logic (threshold checking, error formatting) is handled
+ * by validation-rules.service.ts following SoC principles.
+ *
  * Provider-agnostic (works with any LLM via LLMClient)
  */
 export class LLMOutlineValidator implements OutlineValidator {
@@ -65,94 +64,19 @@ export class LLMOutlineValidator implements OutlineValidator {
       };
     }
 
-    // LLM-based validation for intent, specificity, and actionability
+    // LLM-based validation for safety, specificity, and actionability
+    // Returns raw scores and feedback
     const enhancedResult = await this.client.validateOutline(outline);
 
-    // Convert enhanced result to simple ValidationResult format
+    // Apply threshold business rules to determine pass/fail
+    const validationOutcome = applyValidationThresholds(enhancedResult);
+
+    // Return result with threshold-based validation decision
     const result: EnhancedOutlineValidationResult = {
-      valid: enhancedResult.valid,
-      errors: enhancedResult.errors,
+      valid: validationOutcome.passed,
+      errors: validationOutcome.errors,
       enhancedResult,
     };
-
-    // Add specific error messages based on validation aspects
-    if (!enhancedResult.valid) {
-      const detailedErrors: string[] = [];
-      const thresholds = getThresholdDescriptions();
-
-      // Intent errors (threshold-based)
-      const intentAcceptable = isIntentAcceptable(
-        enhancedResult.intent.positiveScore,
-        enhancedResult.intent.negativeScore,
-        enhancedResult.intent.confidence,
-      );
-
-      if (!intentAcceptable) {
-        if (enhancedResult.intent.negativeScore > VALIDATION_THRESHOLDS.intent.maxNegativeScore) {
-          // High negative score - reject
-          detailedErrors.push(
-            `Invalid intent (negativeScore: ${(enhancedResult.intent.negativeScore * 100).toFixed(0)}%): ${enhancedResult.intent.reasoning}`,
-          );
-          if (enhancedResult.intent.flags && enhancedResult.intent.flags.length > 0) {
-            detailedErrors.push(`Concerns: ${enhancedResult.intent.flags.join(', ')}`);
-          }
-        } else if (enhancedResult.intent.positiveScore < VALIDATION_THRESHOLDS.intent.minPositiveScore) {
-          // Low positive score - unclear/ambiguous
-          detailedErrors.push(
-            `Unclear intent (positiveScore: ${(enhancedResult.intent.positiveScore * 100).toFixed(0)}%, ${thresholds.intent.positive}): ${enhancedResult.intent.reasoning}`,
-          );
-        } else if (enhancedResult.intent.confidence < VALIDATION_THRESHOLDS.intent.minConfidence) {
-          // Low confidence
-          detailedErrors.push(
-            `Low confidence in intent assessment (${(enhancedResult.intent.confidence * 100).toFixed(0)}%, ${thresholds.intent.confidence})`,
-          );
-        }
-      }
-
-      // Specificity errors (threshold-based)
-      const specificityAcceptable = isSpecificityAcceptable(
-        enhancedResult.specificity.specificityScore,
-        enhancedResult.specificity.matchesTaxonomy,
-      );
-
-      if (!specificityAcceptable) {
-        if (enhancedResult.specificity.specificityScore < VALIDATION_THRESHOLDS.specificity.minScore) {
-          // Low specificity score
-          const matchInfo = enhancedResult.specificity.matchesTaxonomy
-            ? `Detected: "${enhancedResult.specificity.detectedHierarchy.topic}"`
-            : 'Topic not found in taxonomy';
-
-          detailedErrors.push(
-            `Too vague (specificityScore: ${(enhancedResult.specificity.specificityScore * 100).toFixed(0)}%, ${thresholds.specificity.score}): ${matchInfo}`,
-          );
-
-          if (enhancedResult.specificity.suggestions && enhancedResult.specificity.suggestions.length > 0) {
-            detailedErrors.push(`Suggestions: ${enhancedResult.specificity.suggestions.join('; ')}`);
-          }
-        } else if (
-          !enhancedResult.specificity.matchesTaxonomy &&
-          VALIDATION_THRESHOLDS.specificity.requireTaxonomyMatch
-        ) {
-          // Specific but not in taxonomy
-          detailedErrors.push(
-            `Topic "${enhancedResult.specificity.detectedHierarchy.topic}" not found in our taxonomy (${thresholds.specificity.taxonomy})`,
-          );
-          if (enhancedResult.specificity.suggestions && enhancedResult.specificity.suggestions.length > 0) {
-            detailedErrors.push(`Did you mean: ${enhancedResult.specificity.suggestions.join(', ')}?`);
-          }
-        }
-      }
-
-      // Actionability errors (boolean-only)
-      if (!enhancedResult.actionability.actionable) {
-        detailedErrors.push('Not actionable: Insufficient information to generate content');
-        if (enhancedResult.actionability.missingInfo && enhancedResult.actionability.missingInfo.length > 0) {
-          detailedErrors.push(`Missing: ${enhancedResult.actionability.missingInfo.join(', ')}`);
-        }
-      }
-
-      result.errors = [...(result.errors || []), ...detailedErrors];
-    }
 
     return result;
   }
