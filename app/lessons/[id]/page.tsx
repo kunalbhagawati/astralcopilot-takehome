@@ -181,7 +181,7 @@ export default function LessonPage() {
     );
   }
 
-  const generatedCode = lesson.generated_code as { tsxCode: string; componentName: string } | null;
+  const compiledCode = lesson.compiled_code as { javascript: string; componentName: string } | null;
 
   return (
     <main className="min-h-screen flex flex-col">
@@ -237,16 +237,17 @@ export default function LessonPage() {
             </CardHeader>
           </Card>
 
-          {/* Lesson Content - Rendered JSX */}
-          {generatedCode ? (
+          {/* Lesson Content - Rendered Component */}
+          {compiledCode ? (
             <div className="lesson-content-container">
-              <LessonTSXRenderer generatedCode={generatedCode} lessonTitle={lesson.title || 'Untitled Lesson'} />
+              <LessonTSXRenderer compiledCode={compiledCode} lessonTitle={lesson.title || 'Untitled Lesson'} />
             </div>
           ) : (
             <Card className="border-yellow-500">
               <CardContent className="pt-6">
                 <p className="text-sm text-yellow-600">
-                  No generated code available for this lesson. The lesson may still be generating or may have failed.
+                  No compiled code available for this lesson. The lesson may still be validating or compiling, or may
+                  have failed validation.
                 </p>
                 {lesson.status === 'failed' && lesson.metadata && (
                   <div className="mt-4">

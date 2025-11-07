@@ -1,116 +1,137 @@
 /**
  * Lesson TSX Renderer Component
  *
- * Renders TSX code from generated lessons using react-jsx-parser.
- * Uses the original TSX code from generated_code (not compiled JavaScript).
+ * Evaluates compiled JavaScript (React.createElement code) at runtime
+ * to render full React components with hooks, state, and interactivity.
  *
- * Problem solved: Previously tried to parse compiled JavaScript (React.createElement)
- * as JSX, causing syntax errors. Now uses original TSX directly.
+ * Approach: Uses new Function() to execute validated and compiled JavaScript
+ * in a controlled scope with React context. This enables:
+ * - Full React hooks (useState, useEffect, etc.)
+ * - Forms with state and event handlers
+ * - Interactive components
+ *
+ * Security: Code is pre-validated through eslint/TypeScript validation cycle
+ * before compilation, ensuring only safe code reaches this renderer.
  */
 
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertCircle } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import JsxParser from 'react-jsx-parser';
+import React, { useEffect, useState } from 'react';
 
 /**
- * Structure of generated_code stored in database
+ * Structure of compiled_code stored in database
  */
-interface GeneratedCode {
-  tsxCode: string;
+interface CompiledCode {
+  javascript: string;
   componentName: string;
 }
 
 interface LessonTSXRendererProps {
-  /** Generated code object containing TSX code and component name */
-  generatedCode: GeneratedCode | null;
+  /** Compiled code object containing JavaScript and component name */
+  compiledCode: CompiledCode | null;
   /** Lesson title for error messages */
   lessonTitle?: string;
 }
 
 /**
- * Extract JSX markup from TSX component code
+ * Strip import and export statements from JavaScript code
  *
- * Removes export statement, imports, and component wrapper to get pure JSX.
- * Works with both arrow functions and regular function components.
+ * Phase 1: Remove all imports and exports since we only provide React context.
+ * Components should use HTML elements and Tailwind CSS only.
  *
- * @param code - Complete TSX component code
- * @returns Extracted JSX string or null if extraction fails
+ * Export statements must be removed because they are not valid inside
+ * Function constructor scope (module-level syntax only).
+ *
+ * Phase 2 (future): Parse imports and provide module context.
+ * See docs/dynamic-imports-strategy.md
+ *
+ * @param code - JavaScript code potentially containing imports and exports
+ * @returns Code with imports and exports removed
  */
-const extractJSXFromTSX = (code: string): string | null => {
+const stripImportsAndExports = (code: string): string => {
+  // Remove ES6 import statements
+  let cleaned = code.replace(/import\s+.*?from\s+['"].*?['"];?\s*/g, '');
+
+  // Remove export keywords (export const, export default, export)
+  cleaned = cleaned.replace(/export\s+(default\s+)?/g, '');
+
+  return cleaned;
+};
+
+/**
+ * Evaluate compiled JavaScript to get React component
+ *
+ * Uses Function constructor to execute code in controlled scope.
+ * Only React is provided in context (Phase 1).
+ *
+ * @param javascript - Compiled JavaScript code
+ * @param componentName - Name of exported component
+ * @returns React component constructor
+ * @throws Error if evaluation fails
+ */
+const evaluateComponent = (javascript: string, componentName: string): React.ComponentType => {
   try {
-    // Remove imports
-    let cleaned = code.replace(/import\s+.*?from\s+['"].*?['"];?\n?/g, '');
+    // Strip imports and exports (Phase 1: no external dependencies)
+    const cleanedCode = stripImportsAndExports(javascript);
 
-    // Remove export statement
-    cleaned = cleaned.replace(/export\s+(default\s+)?/g, '');
+    // Create function that returns the component
 
-    // Try to extract JSX from return statement
-    const returnMatch = cleaned.match(/return\s*\(([\s\S]*)\);?\s*\}?;?$/);
-    if (returnMatch) {
-      return returnMatch[1].trim();
+    const componentFactory = new Function(
+      'React',
+      `
+      ${cleanedCode}
+      return ${componentName};
+    `,
+    );
+
+    // Execute with React context
+    const Component = componentFactory(React);
+
+    if (typeof Component !== 'function') {
+      throw new Error(`${componentName} is not a valid React component`);
     }
 
-    // Try arrow function with implicit return
-    const arrowMatch = cleaned.match(/\(\)\s*=>\s*\(([\s\S]*)\);?$/);
-    if (arrowMatch) {
-      return arrowMatch[1].trim();
-    }
-
-    // Try arrow function without parentheses
-    const arrowNoParenMatch = cleaned.match(/\(\)\s*=>\s*(<[\s\S]*)$/);
-    if (arrowNoParenMatch) {
-      return arrowNoParenMatch[1].trim();
-    }
-
-    return null;
+    return Component;
   } catch (error) {
-    console.error('Error extracting JSX from TSX:', error);
-    return null;
+    console.error('Component evaluation error:', error);
+    throw error;
   }
 };
 
 /**
  * Lesson TSX Renderer
  *
- * Renders TSX code safely using react-jsx-parser.
+ * Renders compiled JavaScript as a full React component.
  * Handles errors and displays appropriate fallback UI.
  */
-export const LessonTSXRenderer: React.FC<LessonTSXRendererProps> = ({ generatedCode, lessonTitle }) => {
-  const [renderError, setRenderError] = useState<string | null>(null);
-  const [jsxMarkup, setJsxMarkup] = useState<string | null>(null);
+export const LessonTSXRenderer: React.FC<LessonTSXRendererProps> = ({ compiledCode, lessonTitle }) => {
+  const [Component, setComponent] = useState<React.ComponentType | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  // Extract JSX when generatedCode changes
-  // Note: Moved out of useMemo to avoid setState-during-render React violation
+  // Evaluate component when compiledCode changes
   useEffect(() => {
-    setRenderError(null);
+    setError(null);
+    setComponent(null);
 
-    if (!generatedCode?.tsxCode) {
-      setRenderError('No TSX code available');
-      setJsxMarkup(null);
+    if (!compiledCode?.javascript) {
+      setError('No compiled code available');
       return;
     }
 
-    const extracted = extractJSXFromTSX(generatedCode.tsxCode);
-    if (!extracted) {
-      setRenderError('Could not extract JSX from TSX component code');
-      setJsxMarkup(null);
-      return;
+    try {
+      const EvaluatedComponent = evaluateComponent(compiledCode.javascript, compiledCode.componentName);
+      setComponent(() => EvaluatedComponent);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to evaluate component';
+      setError(errorMessage);
+      console.error('Component evaluation failed:', err);
     }
-
-    setJsxMarkup(extracted);
-  }, [generatedCode]);
-
-  // Handle runtime render errors from JsxParser
-  const handleError = (error: Error) => {
-    console.error('JSX render error:', error);
-    setRenderError(error.message);
-  };
+  }, [compiledCode]);
 
   // Show error state
-  if (renderError || !jsxMarkup) {
+  if (error || !Component) {
     return (
       <Card className="border-destructive">
         <CardHeader>
@@ -121,22 +142,69 @@ export const LessonTSXRenderer: React.FC<LessonTSXRendererProps> = ({ generatedC
         </CardHeader>
         <CardContent>
           <CardDescription className="text-destructive">
-            Failed to render lesson {lessonTitle ? `"${lessonTitle}"` : ''}. {renderError || 'Invalid TSX format.'}
+            Failed to render lesson {lessonTitle ? `"${lessonTitle}"` : ''}. {error || 'Component could not be loaded.'}
           </CardDescription>
         </CardContent>
       </Card>
     );
   }
 
+  // Render component with error boundary
   return (
-    <div className="lesson-jsx-container">
-      <JsxParser
-        jsx={jsxMarkup}
-        onError={handleError}
-        renderInWrapper={false}
-        showWarnings={process.env.NODE_ENV === 'development'}
-        disableKeyGeneration={false}
-      />
-    </div>
+    <ErrorBoundary lessonTitle={lessonTitle}>
+      <div className="lesson-component-container">
+        <Component />
+      </div>
+    </ErrorBoundary>
   );
 };
+
+/**
+ * Error Boundary for catching runtime errors in rendered components
+ */
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode; lessonTitle?: string },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode; lessonTitle?: string }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('Component runtime error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <Card className="border-destructive">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-destructive" />
+              <CardTitle className="text-destructive">Component Runtime Error</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <CardDescription className="text-destructive">
+              The lesson component {this.props.lessonTitle ? `"${this.props.lessonTitle}"` : ''} encountered an error
+              during rendering.
+            </CardDescription>
+            {this.state.error && (
+              <pre className="mt-4 text-xs bg-muted p-4 rounded overflow-auto">
+                {this.state.error.message}
+                {this.state.error.stack}
+              </pre>
+            )}
+          </CardContent>
+        </Card>
+      );
+    }
+
+    return this.props.children;
+  }
+}
