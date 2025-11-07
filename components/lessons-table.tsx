@@ -12,6 +12,10 @@ import { useCallback, useEffect, useState } from 'react';
 
 interface LessonsTableProps {
   outlineRequestId: string;
+  /**
+   * Callback when a lesson is clicked. Receives the lesson ID.
+   * This allows navigation to the individual lesson page.
+   */
   onLessonClick?: (lessonId: string) => void;
 }
 
@@ -26,7 +30,6 @@ type OutlineRequestWithStatus = OutlineRequest & {
 };
 
 interface LessonWithDetails extends LessonRow {
-  title?: string;
   status?: LessonStatus;
   metadata?: Record<string, unknown> | null;
 }
@@ -117,7 +120,6 @@ export function LessonsTable({ outlineRequestId, onLessonClick }: LessonsTablePr
         const latestStatus = lessonStatuses?.find((s) => s.lesson_id === lesson.id);
         return {
           ...lesson,
-          title: (lesson.content as { title?: string } | null)?.title || 'Untitled Lesson',
           status: latestStatus?.status,
           metadata: latestStatus?.metadata as Record<string, unknown> | null,
         };
@@ -316,7 +318,9 @@ export function LessonsTable({ outlineRequestId, onLessonClick }: LessonsTablePr
       {/* Lessons Table */}
       {lessons.length === 0 ? (
         <div className="text-sm text-muted-foreground text-center py-8">
-          {outlineRequest.status === 'completed'
+          {outlineRequest.status === 'completed' ||
+          outlineRequest.status === 'error' ||
+          outlineRequest.status === 'failed'
             ? 'No lessons found for this outline.'
             : 'Lessons are being generated...'}
         </div>
@@ -334,14 +338,12 @@ export function LessonsTable({ outlineRequestId, onLessonClick }: LessonsTablePr
               <TableRow
                 key={lesson.id}
                 onClick={() => {
-                  if (lesson.status === 'lesson.ready_to_use' && onLessonClick) {
+                  if (onLessonClick) {
                     onLessonClick(lesson.id);
                   }
                 }}
-                className={
-                  lesson.status === 'lesson.ready_to_use' ? 'cursor-pointer hover:bg-muted/80' : 'cursor-default'
-                }>
-                <TableCell className="font-medium">{lesson.title}</TableCell>
+                className="cursor-pointer hover:bg-muted/80">
+                <TableCell className="font-medium">{lesson.title || 'Untitled Lesson'}</TableCell>
                 <TableCell>{lesson.status && getLessonStatusBadge(lesson.status)}</TableCell>
                 <TableCell className="text-muted-foreground">{formatDate(lesson.created_at || '')}</TableCell>
               </TableRow>

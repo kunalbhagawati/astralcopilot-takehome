@@ -1,6 +1,6 @@
 'use client';
 
-import { LessonsTable } from '@/components/lessons-table';
+import { OutlineAccordion } from '@/components/outline-accordion';
 import { ThemeSwitcher } from '@/components/theme-switcher';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -109,18 +109,16 @@ export default function Home() {
             </CardContent>
           </Card>
 
-          {/* Lessons Table */}
-          {currentOutlineRequestId && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Your Lessons</CardTitle>
-                <CardDescription>View and manage your generated lessons</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <LessonsTable outlineRequestId={currentOutlineRequestId} onLessonClick={handleLessonClick} />
-              </CardContent>
-            </Card>
-          )}
+          {/* Outline Accordion */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Your Outlines</CardTitle>
+              <CardDescription>View all outline requests and their generated lessons</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <OutlineAccordion defaultOpenId={currentOutlineRequestId} onLessonClick={handleLessonClick} />
+            </CardContent>
+          </Card>
         </div>
       </div>
 

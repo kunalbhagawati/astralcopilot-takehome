@@ -1,7 +1,12 @@
+import { createLLMClient } from '@/lib/services/adapters/llm-client';
+import { getOutlineValidator } from '@/lib/services/adapters/outline-validator';
 import { logger } from '@/lib/services/logger';
-import { processOutline } from '@/lib/services/outline-request-pipeline';
+import { outlineRequestActorMachine } from '@/lib/services/machines/outline-request.actor-machine';
+import { OutlineRequestRepository } from '@/lib/services/repositories/outline-request.repository';
+import { SupabaseLessonRepository } from '@/lib/services/repositories/supabase.repository';
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { createActor } from 'xstate';
 
 export async function POST(request: NextRequest) {
   logger.info('[API] POST /api/lessons/generate - Request received');
@@ -57,9 +62,35 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create status record' }, { status: 500 });
     }
 
-    // Trigger background processing (async, non-blocking)
+    // Trigger background processing using actor machine (async, non-blocking)
     logger.info('[API] Triggering background processing...');
-    processOutline(outlineRequest.id);
+
+    // Fetch the created outline request for the actor
+    const outlineRepo = new OutlineRequestRepository();
+    const createdOutlineRequest = await outlineRepo.findById(outlineRequest.id);
+
+    if (createdOutlineRequest) {
+      // Create and start the actor machine
+      const actor = createActor(outlineRequestActorMachine, {
+        input: {
+          outlineRequestId: outlineRequest.id,
+          outline: createdOutlineRequest.outline,
+          validator: getOutlineValidator(),
+          llmClient: createLLMClient(),
+          outlineRepo,
+          lessonRepo: new SupabaseLessonRepository(),
+        },
+      });
+
+      // Subscribe for logging
+      actor.subscribe({
+        complete: () => logger.info(`[Actor] Outline request ${outlineRequest.id} completed`),
+        error: (error) => logger.error(`[Actor] Outline request ${outlineRequest.id} failed:`, error),
+      });
+
+      // Start the machine (non-blocking)
+      actor.start();
+    }
 
     // Return the created outline request immediately
     logger.info('[API] Returning success response');

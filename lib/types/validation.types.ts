@@ -221,3 +221,49 @@ export interface ValidationResult {
   valid: boolean;
   errors?: string[];
 }
+
+/**
+ * TSX Validation Types
+ *
+ * Used for Stage 4 validation of generated TypeScript/TSX code
+ */
+
+/**
+ * Type of TSX validation error
+ */
+export type TSXValidationErrorType = 'typescript' | 'eslint';
+
+/**
+ * Severity level of TSX validation error
+ */
+export type TSXValidationErrorSeverity = 'error' | 'warning';
+
+/**
+ * A single TSX validation error from TypeScript compiler or ESLint
+ */
+export interface TSXValidationError {
+  /** Type of validator that found this error */
+  type: TSXValidationErrorType;
+  /** Severity of the error */
+  severity: TSXValidationErrorSeverity;
+  /** Line number where error occurred (1-indexed) */
+  line: number;
+  /** Column number where error occurred (1-indexed) */
+  column: number;
+  /** Human-readable error message */
+  message: string;
+  /** ESLint rule name (if applicable) */
+  rule?: string;
+  /** TypeScript diagnostic code (if applicable) */
+  code?: number;
+}
+
+/**
+ * Result of TSX validation
+ */
+export interface TSXValidationResult {
+  /** Whether the TSX passed validation */
+  valid: boolean;
+  /** Array of validation errors (empty if valid) */
+  errors: TSXValidationError[];
+}

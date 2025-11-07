@@ -6,7 +6,6 @@
  */
 
 import type { Lesson, LessonStatus } from '@/lib/types/lesson';
-import type { LessonContent } from '@/lib/types/lesson-structure.types';
 
 /**
  * Repository interface for lesson operations
@@ -15,14 +14,37 @@ import type { LessonContent } from '@/lib/types/lesson-structure.types';
  */
 export interface LessonRepository {
   /**
-   * Create a new lesson with content
+   * Create a new lesson with generated TSX code
    *
    * Note: Status is NOT stored on lesson table. Use createStatusRecord() separately.
+   * Compiled code is added later after validation using updateCompiledCode().
    *
-   * @param content - Lesson content (actionables/teaching blocks)
+   * @param title - Lesson title (stored in lesson.title column)
+   * @param generatedCode - Generated TSX code and component name
    * @returns Created lesson record
    */
-  create(content: LessonContent): Promise<Lesson>;
+  create(title: string, generatedCode: { tsxCode: string; componentName: string }): Promise<Lesson>;
+
+  /**
+   * Get number of validation attempts for a lesson
+   *
+   * Counts existing 'lesson.validating' status records to support retry logic
+   * that survives process crashes.
+   *
+   * @param lessonId - Lesson ID
+   * @returns Number of validation attempts already made
+   */
+  getValidationAttempts(lessonId: string): Promise<number>;
+
+  /**
+   * Update lesson with compiled JavaScript code after validation
+   *
+   * Called after TSX validation and compilation succeed.
+   *
+   * @param lessonId - Lesson ID
+   * @param compiledCode - Compiled JavaScript code and component name
+   */
+  updateCompiledCode(lessonId: string, compiledCode: { javascript: string; componentName: string }): Promise<void>;
 
   /**
    * Create status record in lesson_status_record

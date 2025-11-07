@@ -8,6 +8,7 @@
  * Provides structured output generation for:
  * - Outline validation (intent, specificity, actionability)
  * - Actionable blocks generation (teaching points from validated outline)
+ * - TSX generation (React/Next.js components from blocks)
  *
  * Note: For provider-specific health checks (e.g., Ollama model management),
  * use lib/utils/ollama-health-check.ts
@@ -17,13 +18,17 @@ import {
   BLOCKS_GENERATION_SYSTEM_PROMPT,
   buildBlocksGenerationUserPrompt,
 } from '../../prompts/blocks-generation.prompts';
+import { TSX_GENERATION_SYSTEM_PROMPT, buildTSXGenerationUserPrompt } from '../../prompts/tsx-generation.prompts';
 import { VALIDATION_SYSTEM_PROMPT, buildValidationUserPrompt } from '../../prompts/validation.prompts';
 import type { ActionableBlocksResult, BlockGenerationInput } from '../../types/actionable-blocks.types';
 import { ActionableBlocksResultSchema } from '../../types/actionable-blocks.types';
+import type { TSXGenerationInput, TSXGenerationResult } from '../../types/tsx-generation.types';
+import { TSXGenerationResultSchema } from '../../types/tsx-generation.types';
 import type { EnhancedValidationResult } from '../../types/validation.types';
 import { EnhancedValidationResultSchema } from '../../types/validation.types';
 import { transformLLMError } from '../utils/llm-error-transformer';
 import { generateBlocks } from './blocks-generator-core';
+import { generateTSX } from './tsx-generator-core';
 import { createAIModel } from './llm-config';
 import { generateValidationResult } from './outline-validation.core';
 
@@ -56,7 +61,7 @@ export interface LLMClientConfig {
 const DEFAULT_CONFIG: Required<LLMClientConfig> = {
   host: process.env.OLLAMA_HOST || 'http://localhost:11434',
   validationModel: process.env.OLLAMA_VALIDATION_MODEL || 'llama3.1',
-  generationModel: process.env.OLLAMA_GENERATION_MODEL || 'llama3.1',
+  generationModel: process.env.OLLAMA_GENERATION_MODEL || 'deepseek-coder-v2',
   validationTemperature: 0.2,
   generationTemperature: 0.6,
   timeout: 60000,
@@ -81,7 +86,7 @@ export class LLMClient {
    * First stage of the LLM flow:
    * 1. Validation (this method) → produces scores/feedback
    * 2. Blocks generation → produces teaching points
-   * 3. (Later) Lesson generation → formats blocks into lessons
+   * 3. TSX generation → formats blocks into React components
    */
   async validateOutline(outline: string): Promise<EnhancedValidationResult> {
     try {
@@ -110,7 +115,7 @@ export class LLMClient {
    * Second stage of the LLM flow:
    * 1. Validation → produces scores/feedback
    * 2. Blocks generation (this method) → produces teaching points
-   * 3. (Later) Lesson generation → formats blocks into lessons
+   * 3. TSX generation → formats blocks into React components
    *
    * Using Vercel AI SDK's generateObject() for structured output generation.
    * Returns ActionableBlocksResult with array of markdown strings.
@@ -134,6 +139,42 @@ export class LLMClient {
         modelName: this.config.generationModel,
         host: this.config.host,
         operation: 'blocks generation',
+      });
+      throw new Error(llmError.message);
+    }
+  }
+
+  /**
+   * Generate TSX code from actionable blocks
+   *
+   * Third stage of the LLM flow:
+   * 1. Validation → produces scores/feedback
+   * 2. Blocks generation → produces teaching points
+   * 3. TSX generation (this method) → produces React/Next.js components
+   *
+   * Using Vercel AI SDK's generateObject() for structured output generation.
+   * Returns TSXGenerationResult with TSX code strings for each lesson.
+   * Recommended model: deepseek-coder-v2 (specialized for code generation)
+   *
+   * @param input - TSX generation input (blocks result from Stage 2)
+   * @returns TSX generation result with React components
+   */
+  async generateTSXFromBlocks(input: TSXGenerationInput): Promise<TSXGenerationResult> {
+    try {
+      const model = createAIModel(this.config.generationModel);
+
+      return await generateTSX(input, {
+        model,
+        systemPrompt: TSX_GENERATION_SYSTEM_PROMPT,
+        buildUserPrompt: buildTSXGenerationUserPrompt,
+        schema: TSXGenerationResultSchema,
+        temperature: 0.4, // Lower temperature for code generation
+      });
+    } catch (error) {
+      const llmError = transformLLMError(error, {
+        modelName: this.config.generationModel,
+        host: this.config.host,
+        operation: 'TSX generation',
       });
       throw new Error(llmError.message);
     }

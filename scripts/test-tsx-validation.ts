@@ -1,0 +1,395 @@
+/**
+ * Test script for TSX validation logic
+ *
+ * Tests the validation used in outline-request.actor-machine.ts:
+ * - TypeScript compiler validation
+ * - ESLint validation
+ * - Combined validation orchestrator
+ *
+ * Run: bun run scripts/test-tsx-validation.ts
+ * Run with verbose output: bun run scripts/test-tsx-validation.ts -v
+ */
+
+import { validateTSX } from '../lib/services/validation/tsx-validation-orchestrator';
+import { validateWithTypeScript } from '../lib/services/validation/typescript-validator';
+import { validateWithESLint } from '../lib/services/validation/eslint-validator';
+import type { TSXValidationResult } from '../lib/types/validation.types';
+
+/**
+ * Console logger for test output
+ * Using console.log instead of logger service (which only outputs to files)
+ */
+const log = console.log;
+
+/**
+ * Test fixtures for TSX validation
+ */
+const FIXTURES = {
+  /**
+   * Valid TSX component - should pass both TypeScript and ESLint
+   */
+  validComponent: `export const PhotosynthesisLesson = () => {
+  return (
+    <main className="min-h-screen bg-gradient-to-b from-green-50 to-blue-50 py-12 px-4">
+      <div className="max-w-4xl mx-auto">
+        <header className="mb-8 text-center">
+          <h1 className="text-4xl font-bold text-green-800 mb-2">
+            Introduction to Photosynthesis
+          </h1>
+          <div className="h-1 w-24 bg-green-600 mx-auto rounded-full"></div>
+        </header>
+
+        <section className="space-y-6">
+          <article className="bg-white rounded-xl shadow-lg p-8 hover:shadow-xl transition-shadow">
+            <h2 className="text-2xl font-bold text-green-700 mb-4">
+              What is photosynthesis?
+            </h2>
+            <p className="text-lg text-gray-700 leading-relaxed">
+              Plants make their own food using sunlight, like having a{' '}
+              <span className="font-bold text-green-600">kitchen inside their leaves</span>.
+            </p>
+          </article>
+        </section>
+      </div>
+    </main>
+  );
+};`,
+
+  /**
+   * Type error - undefined variable
+   */
+  typeError: `export const BrokenLesson = () => {
+  const title = undefined;
+
+  return (
+    <main className="p-4">
+      <h1>{title.toUpperCase()}</h1>
+    </main>
+  );
+};`,
+
+  /**
+   * Missing export statement
+   */
+  noExport: `const LessonComponent = () => {
+  return (
+    <main className="p-4">
+      <h1>Missing Export</h1>
+    </main>
+  );
+};`,
+
+  /**
+   * Invalid JSX syntax - unclosed tag
+   */
+  syntaxError: `export const InvalidJSX = () => {
+  return (
+    <main className="p-4">
+      <h1>Unclosed heading
+    </main>
+  );
+};`,
+
+  /**
+   * Wrong React element type
+   */
+  typeErrorJSX: `export const WrongType = () => {
+  const element: string = <div>Hello</div>;
+
+  return (
+    <main className="p-4">
+      {element}
+    </main>
+  );
+};`,
+
+  /**
+   * Component with TypeScript errors (wrong prop types)
+   */
+  propTypeError: `interface Props {
+  title: string;
+  count: number;
+}
+
+export const PropErrorLesson = ({ title, count }: Props) => {
+  const badTitle: number = title; // Type error
+  const badCount: string = count; // Type error
+
+  return (
+    <main className="p-4">
+      <h1>{badTitle}</h1>
+      <p>{badCount}</p>
+    </main>
+  );
+};`,
+
+  /**
+   * Component with unused variables (ESLint warning, not error)
+   */
+  unusedVars: `export const UnusedVarsLesson = () => {
+  const unused = 'This variable is never used';
+  const alsoUnused = 42;
+
+  return (
+    <main className="p-4">
+      <h1>Hello World</h1>
+    </main>
+  );
+};`,
+};
+
+/**
+ * Test case definition
+ */
+interface TestCase {
+  name: string;
+  fixture: string;
+  expectedValid: boolean;
+  expectedErrorTypes?: ('typescript' | 'eslint')[];
+  description: string;
+}
+
+/**
+ * Test cases to run
+ */
+const TEST_CASES: TestCase[] = [
+  {
+    name: 'Valid Component',
+    fixture: FIXTURES.validComponent,
+    expectedValid: true,
+    description: 'Complete valid React component with Tailwind CSS',
+  },
+  {
+    name: 'Type Error (undefined)',
+    fixture: FIXTURES.typeError,
+    expectedValid: false,
+    expectedErrorTypes: ['typescript'],
+    description: 'Calling method on possibly undefined value',
+  },
+  {
+    name: 'Missing Export',
+    fixture: FIXTURES.noExport,
+    expectedValid: false, // ESLint catches unused variable (component never exported)
+    expectedErrorTypes: ['eslint'],
+    description: 'Component without export statement (caught by ESLint no-unused-vars)',
+  },
+  {
+    name: 'Syntax Error (unclosed tag)',
+    fixture: FIXTURES.syntaxError,
+    expectedValid: false,
+    expectedErrorTypes: ['typescript'],
+    description: 'Invalid JSX syntax with unclosed tag',
+  },
+  {
+    name: 'Type Error (JSX element)',
+    fixture: FIXTURES.typeErrorJSX,
+    expectedValid: false,
+    expectedErrorTypes: ['typescript'],
+    description: 'Assigning JSX element to wrong type',
+  },
+  {
+    name: 'Prop Type Errors',
+    fixture: FIXTURES.propTypeError,
+    expectedValid: false,
+    expectedErrorTypes: ['typescript'],
+    description: 'Multiple prop type assignment errors',
+  },
+  {
+    name: 'Unused Variables',
+    fixture: FIXTURES.unusedVars,
+    expectedValid: false, // Project ESLint config treats no-unused-vars as error, not warning
+    expectedErrorTypes: ['eslint'],
+    description: 'Unused variables (caught by ESLint no-unused-vars rule)',
+  },
+];
+
+/**
+ * Test result
+ */
+interface TestResult {
+  testName: string;
+  passed: boolean;
+  validationResult: TSXValidationResult;
+  expectedValid: boolean;
+  actualValid: boolean;
+  errorCount: number;
+  errors: string[];
+}
+
+/**
+ * Run a single test case
+ */
+const runTestCase = async (testCase: TestCase, verbose: boolean): Promise<TestResult> => {
+  log(`\n${'─'.repeat(80)}`);
+  log(`📝 Test: ${testCase.name}`);
+  log(`   Description: ${testCase.description}`);
+  log(`   Expected: ${testCase.expectedValid ? '✅ Valid' : '❌ Invalid'}`);
+
+  // Run validation
+  const validationResult = await validateTSX(testCase.fixture);
+
+  const passed = validationResult.valid === testCase.expectedValid;
+
+  // Log results
+  log(`   Actual: ${validationResult.valid ? '✅ Valid' : '❌ Invalid'}`);
+  log(`   Errors Found: ${validationResult.errors.length}`);
+
+  if (validationResult.errors.length > 0) {
+    log(`\n   📋 Validation Errors:`);
+    validationResult.errors.forEach((error, idx) => {
+      log(`      ${idx + 1}. [${error.type}] Line ${error.line}:${error.column} - ${error.message}`);
+      if (error.code) {
+        log(`         Code: ${error.code}`);
+      }
+      if (error.rule) {
+        log(`         Rule: ${error.rule}`);
+      }
+    });
+  }
+
+  if (verbose && !passed) {
+    log(`\n   📄 Code Sample:`);
+    const lines = testCase.fixture.split('\n');
+    lines.slice(0, 10).forEach((line, idx) => {
+      log(`      ${idx + 1}: ${line}`);
+    });
+    if (lines.length > 10) {
+      log(`      ... (${lines.length - 10} more lines)`);
+    }
+  }
+
+  log(`\n   ${passed ? '✅ TEST PASSED' : '❌ TEST FAILED'}`);
+
+  return {
+    testName: testCase.name,
+    passed,
+    validationResult,
+    expectedValid: testCase.expectedValid,
+    actualValid: validationResult.valid,
+    errorCount: validationResult.errors.length,
+    errors: validationResult.errors.map((e) => e.message),
+  };
+};
+
+/**
+ * Run individual validator tests
+ */
+const runIndividualValidatorTests = async (): Promise<void> => {
+  log(`\n${'═'.repeat(80)}`);
+  log('🔬 Individual Validator Tests');
+  log('═'.repeat(80));
+
+  // Test TypeScript validator independently
+  log('\n📘 TypeScript Validator Test');
+  log('─'.repeat(80));
+
+  const tsErrors = validateWithTypeScript(FIXTURES.typeError);
+  log(`   Errors found: ${tsErrors.length}`);
+  if (tsErrors.length > 0) {
+    tsErrors.forEach((error, idx) => {
+      log(`   ${idx + 1}. Line ${error.line}:${error.column} - ${error.message}`);
+    });
+  }
+
+  // Test ESLint validator independently
+  log('\n📗 ESLint Validator Test');
+  log('─'.repeat(80));
+
+  const eslintErrors = await validateWithESLint(FIXTURES.validComponent);
+  log(`   Errors found: ${eslintErrors.length}`);
+  if (eslintErrors.length > 0) {
+    eslintErrors.forEach((error, idx) => {
+      log(`   ${idx + 1}. Line ${error.line}:${error.column} - ${error.message}`);
+    });
+  }
+};
+
+/**
+ * Run all tests
+ */
+const runTests = async (verbose: boolean): Promise<void> => {
+  log('🚀 Starting TSX Validation Tests');
+  if (verbose) {
+    log('   (Verbose mode: showing detailed error info)');
+  }
+  log('\n' + '═'.repeat(80));
+
+  // Run individual validator tests first
+  if (verbose) {
+    await runIndividualValidatorTests();
+  }
+
+  // Run orchestrator tests
+  log(`\n${'═'.repeat(80)}`);
+  log('🎭 Orchestrator Tests (TypeScript + ESLint)');
+  log('═'.repeat(80));
+
+  const results: TestResult[] = [];
+
+  for (const testCase of TEST_CASES) {
+    const result = await runTestCase(testCase, verbose);
+    results.push(result);
+  }
+
+  // Summary
+  log(`\n${'═'.repeat(80)}`);
+  log('📊 Test Summary');
+  log('═'.repeat(80));
+
+  const passedCount = results.filter((r) => r.passed).length;
+  const failedCount = results.filter((r) => !r.passed).length;
+
+  log(`\n   Total Tests: ${results.length}`);
+  log(`   ✅ Passed: ${passedCount}`);
+  log(`   ❌ Failed: ${failedCount}`);
+
+  if (failedCount > 0) {
+    log(`\n   Failed Tests:`);
+    results
+      .filter((r) => !r.passed)
+      .forEach((r) => {
+        log(`      - ${r.testName}`);
+        log(`        Expected: ${r.expectedValid ? 'valid' : 'invalid'}`);
+        log(`        Got: ${r.actualValid ? 'valid' : 'invalid'}`);
+      });
+  }
+
+  log(`\n${'═'.repeat(80)}`);
+
+  if (passedCount === results.length) {
+    log('\n🎉 All tests passed!\n');
+  } else {
+    log(`\n⚠️  ${failedCount} test(s) failed\n`);
+  }
+
+  log('💡 Note: This tests the same validation logic used in outline-request-pipeline.ts');
+  if (!verbose) {
+    log('💡 Tip: Run with -v or --verbose for detailed validator tests and error info');
+  }
+  log('');
+};
+
+/**
+ * Main execution
+ */
+const main = async (): Promise<void> => {
+  // Parse command line arguments
+  const args = process.argv.slice(2);
+  const verbose = args.includes('-v') || args.includes('--verbose');
+
+  try {
+    await runTests(verbose);
+  } catch (error) {
+    console.error('\n❌ Test execution failed:', error);
+    process.exit(1);
+  }
+};
+
+// Export for direct execution
+export { main };
+
+// Run if executed directly
+// @ts-ignore - Bun-specific property not in standard TypeScript
+if (import.meta.main) {
+  main().catch((error) => console.error(error));
+}
