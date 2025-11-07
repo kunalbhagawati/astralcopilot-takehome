@@ -2,11 +2,11 @@ import { createLLMClient } from '@/lib/services/adapters/llm-client';
 import { getOutlineValidator } from '@/lib/services/adapters/outline-validator';
 import { logger } from '@/lib/services/logger';
 import { outlineRequestActorMachine } from '@/lib/services/machines/outline-request.actor-machine';
+import { registerActor } from '@/lib/services/machines/actor-registry';
 import { OutlineRequestRepository } from '@/lib/services/repositories/outline-request.repository';
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { createActor } from 'xstate';
-import { LessonRepository } from '@/lib/services/repositories/lesson.repository';
 
 export async function POST(request: NextRequest) {
   logger.info('[API] POST /api/lessons/generate - Request received');
@@ -50,23 +50,20 @@ export async function POST(request: NextRequest) {
 
     logger.info('[API] Outline request created:', outlineRequest.id);
 
-    // Insert initial status record
-    logger.info('[API] Inserting initial status record...');
-    const { error: statusError } = await supabase.from('outline_request_status_record').insert({
-      outline_request_id: outlineRequest.id,
-      status: 'submitted',
-    });
-
-    if (statusError) {
-      logger.error('[API] Error creating status record:', statusError);
-      return NextResponse.json({ error: 'Failed to create status record' }, { status: 500 });
+    // Update initial status (submitted)
+    logger.info('[API] Setting initial status to submitted...');
+    const outlineRepo = new OutlineRequestRepository();
+    try {
+      await outlineRepo.updateStatus(outlineRequest.id, 'submitted', undefined);
+    } catch (statusError) {
+      logger.error('[API] Error updating status:', statusError);
+      return NextResponse.json({ error: 'Failed to update status' }, { status: 500 });
     }
 
     // Trigger background processing using actor machine (async, non-blocking)
     logger.info('[API] Triggering background processing...');
 
     // Fetch the created outline request for the actor
-    const outlineRepo = new OutlineRequestRepository();
     const createdOutlineRequest = await outlineRepo.findById(outlineRequest.id);
 
     if (createdOutlineRequest) {
@@ -78,9 +75,11 @@ export async function POST(request: NextRequest) {
           validator: getOutlineValidator(),
           llmClient: createLLMClient(),
           outlineRepo,
-          lessonRepo: new LessonRepository(),
         },
       });
+
+      // Register actor to prevent garbage collection
+      registerActor(outlineRequest.id, actor, 'outline');
 
       // Subscribe for logging
       actor.subscribe({

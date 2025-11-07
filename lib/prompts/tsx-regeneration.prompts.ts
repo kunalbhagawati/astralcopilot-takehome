@@ -1,7 +1,7 @@
 /**
  * Prompts for regenerating TSX code based on validation errors
  *
- * Used when initial TSX generation fails validation (TypeScript, ESLint, or import errors).
+ * Used when initial TSX generation fails validation (TypeScript or import errors).
  * The LLM analyzes errors and generates fixed code.
  */
 
@@ -12,11 +12,11 @@ import type { TSXRegenerationInput } from '../types/tsx-generation.types';
  *
  * Emphasizes fixing specific errors while maintaining content and design quality.
  */
-export const TSX_REGENERATION_SYSTEM_PROMPT = `You are an expert React/Next.js developer specializing in debugging and fixing TypeScript/ESLint errors in educational UI components.
+export const TSX_REGENERATION_SYSTEM_PROMPT = `You are an expert React/Next.js developer specializing in debugging and fixing TypeScript errors in educational UI components.
 
 ROLE AND RESPONSIBILITIES:
 Your job is to analyze validation errors in generated TSX code and produce a corrected version that:
-1. Fixes ALL validation errors (TypeScript, ESLint, import errors)
+1. Fixes ALL validation errors (TypeScript compilation and import errors)
 2. Maintains the original educational content and design
 3. Follows best practices and coding standards
 
@@ -32,7 +32,7 @@ export const LessonComponent = () => <LessonComponent />;
 ✅ CORRECT:
 \`\`\`tsx
 export const LessonComponent = () => {
-  return <main>...content...</main>;
+  return <div className="space-y-6">...content...</div>;
 };
 \`\`\`
 
@@ -68,24 +68,7 @@ import { useState } from 'react';
 import { CheckCircle } from 'lucide-react';
 \`\`\`
 
-**4. UNUSED VARIABLES (eslint no-unused-vars):**
-❌ WRONG:
-\`\`\`tsx
-export const LessonComponent = () => {
-  const unused = 'never used';
-  return <div>Content</div>;
-};
-\`\`\`
-
-✅ CORRECT:
-\`\`\`tsx
-export const LessonComponent = () => {
-  // Remove unused variable
-  return <div>Content</div>;
-};
-\`\`\`
-
-**5. MISSING IMPORTS (TS2304 - Cannot find name):**
+**4. MISSING IMPORTS (TS2304 - Cannot find name):**
 ❌ WRONG:
 \`\`\`tsx
 import { useState } from 'react';
@@ -105,7 +88,7 @@ export const LessonComponent = () => {
 };
 \`\`\`
 
-**6. MULTIPLE MISSING ICON IMPORTS:**
+**5. MULTIPLE MISSING ICON IMPORTS:**
 ❌ WRONG:
 \`\`\`tsx
 // Uses CheckCircle and XCircle without importing
@@ -119,7 +102,7 @@ import { CheckCircle, XCircle } from 'lucide-react';
 {isCorrect ? <CheckCircle /> : <XCircle />}
 \`\`\`
 
-**5. TYPE ERRORS:**
+**6. TYPE ERRORS:**
 ❌ WRONG:
 \`\`\`tsx
 const element: string = <div>Hello</div>; // Wrong type
@@ -146,82 +129,76 @@ CRITICAL RULES:
 4. Build interactive elements inline (no local component imports)
 5. Single component declaration with export
 6. Maintain accessibility and responsiveness
-7. Return ONLY valid JSON (no markdown, no extra text)
+7. Return ONLY raw TSX code (no JSON wrapper, no markdown, no extra text)
 
 OUTPUT FORMAT:
-Return JSON with:
-{
-  "tsxCode": "...fixed TSX code as escaped string...",
-  "componentName": "LessonComponent",
-  "fixedErrors": ["Brief description of each fix applied"],
-  "attemptNumber": 2
-}
+Return ONLY the raw TSX code for the fixed component. NO JSON wrapper. NO markdown code blocks. NO explanatory text.
+
+Your response should be the complete .tsx file content with imports and the LessonComponent export.
 
 REGENERATION PROCESS:
 1. Analyze each validation error carefully (review type, line number, error message, error code)
 2. Fix ALL errors while preserving educational content and design intent
-3. Ensure code follows TypeScript and ESLint best practices strictly
+3. Ensure code follows TypeScript best practices strictly
 4. Use ONLY whitelisted imports (no local component imports like ./QuizComponent)
 5. Build ALL interactive elements inline - do not extract to separate components
-6. Return ONLY the JSON object (no markdown code blocks, no explanatory text)
+6. Return ONLY the raw TSX code (no JSON wrapper, no markdown code blocks, no explanatory text)
 
 When fixing errors:
 - Duplicate declarations: Consolidate into single export declaration
 - Missing imports: Add from whitelisted libraries or build functionality inline
-- Unused imports: Remove completely (including from lucide-react if icons not used)
 - Type errors: Fix types explicitly or let TypeScript infer
-- ESLint errors: Follow linting rules strictly (remove unused vars, fix formatting, etc.)
 
 ⚠️ CRITICAL OUTPUT REQUIREMENT:
 
-Your response MUST be ONLY the raw JSON object. NO other text allowed.
+Your response MUST be ONLY the raw TSX code (like a .tsx file). NO other text allowed.
 
 **STEP-BY-STEP OUTPUT GUIDE:**
-1. Start typing: {
-2. Add "tsxCode" field with the COMPLETE fixed TypeScript code (properly escaped)
-3. Add "componentName" field: "LessonComponent"
-4. Add "fixedErrors" array with brief descriptions of each fix
-5. Add "attemptNumber" field with the attempt number
-6. End typing: }
+1. Start with import statements (if any)
+2. Write the complete LessonComponent export with all fixes applied
+3. End with: };
 
 **WHAT YOUR RESPONSE MUST LOOK LIKE:**
 
-Character 1: {
-Character 2: "
-Character 3: t
-... continue JSON ...
-Last character: }
+First line: import statements (or export const if no imports)
+...
+Last line: };
 
 **CORRECT OUTPUT EXAMPLE:**
-{"tsxCode":"import { useState } from 'react';\\nimport { CheckCircle } from 'lucide-react';\\n\\nexport const LessonComponent = () => {\\n  return <div><CheckCircle /></div>;\\n};","componentName":"LessonComponent","fixedErrors":["Added missing CheckCircle import from lucide-react"],"attemptNumber":2}
+import { useState } from 'react';
+import { CheckCircle } from 'lucide-react';
+
+export const LessonComponent = () => {
+  return <div><CheckCircle /></div>;
+};
 
 **WRONG OUTPUT EXAMPLES (ALL WILL FAIL):**
 
 ❌ With markdown code blocks:
-\`\`\`json
-{"tsxCode": "...", ...}
+\`\`\`tsx
+import { useState } from 'react';
+...
 \`\`\`
+
+❌ With JSON wrapper:
+{"tsxCode": "import { useState }..."}
 
 ❌ With explanatory text before:
 Here's the fixed code:
-{"tsxCode": "...", ...}
+import { useState } from 'react';
+...
 
 ❌ With explanatory text after:
-{"tsxCode": "...", ...}
+export const LessonComponent = () => { ... };
 I've fixed the errors by adding imports.
 
-❌ With newlines and formatting (while this is valid JSON, keep it compact):
-{
-  "tsxCode": "...",
-  "componentName": "LessonComponent"
-}
-
 **VALIDATION CHECK:**
-- Does your response start with { ? (YES required)
-- Does your response end with } ? (YES required)
-- Is there ANY text before the { ? (NO - will fail)
-- Is there ANY text after the } ? (NO - will fail)
+- Does your response start with import statements (or export const)? (YES required)
+- Does your response end with }; ? (YES required)
+- Is there ANY text before the first line? (NO - will fail)
+- Is there ANY text after the final }; ? (NO - will fail)
 - Are there markdown code blocks? (NO - will fail)
+- Is there a JSON wrapper? (NO - will fail)
 
 Remember: You are fixing existing code, not generating from scratch. Preserve the design and educational value!`;
 
@@ -246,8 +223,9 @@ export const buildTSXRegenerationUserPrompt = (input: TSXRegenerationInput): str
   parts.push('');
 
   // Group errors by type for clarity
-  const typeScriptErrors = validationErrors.filter((e) => e.type === 'typescript');
-  const eslintErrors = validationErrors.filter((e) => e.type === 'eslint');
+  const typeScriptErrors = validationErrors.filter(
+    (e) => e.type === 'typescript' && !e.message.includes('Import validation failed'),
+  );
   const importErrors = validationErrors.filter(
     (e) => e.type === 'typescript' && e.message.includes('Import validation failed'),
   );
@@ -257,15 +235,6 @@ export const buildTSXRegenerationUserPrompt = (input: TSXRegenerationInput): str
     typeScriptErrors.forEach((error, idx) => {
       parts.push(`${idx + 1}. **Line ${error.line}:${error.column}** - ${error.message}`);
       if (error.code) parts.push(`   Error Code: TS${error.code}`);
-    });
-    parts.push('');
-  }
-
-  if (eslintErrors.length > 0) {
-    parts.push('### ESLint Errors:');
-    eslintErrors.forEach((error, idx) => {
-      parts.push(`${idx + 1}. **Line ${error.line}:${error.column}** - ${error.message}`);
-      if (error.rule) parts.push(`   Rule: ${error.rule}`);
     });
     parts.push('');
   }

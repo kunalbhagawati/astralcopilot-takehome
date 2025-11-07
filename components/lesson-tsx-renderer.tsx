@@ -28,17 +28,9 @@ import { buildModuleContext } from '@/lib/services/imports/module-context';
 import { AlertCircle } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
-/**
- * Structure of compiled_code stored in database
- */
-interface CompiledCode {
-  javascript: string;
-  componentName: string;
-}
-
 interface LessonTSXRendererProps {
-  /** Compiled code object containing JavaScript and component name */
-  compiledCode: CompiledCode | null;
+  /** Compiled JavaScript code as plain text */
+  compiledCode: string | null;
   /** Lesson title for error messages */
   lessonTitle?: string;
 }
@@ -134,13 +126,14 @@ export const LessonTSXRenderer: React.FC<LessonTSXRendererProps> = ({ compiledCo
       setError(null);
       setComponent(null);
 
-      if (!compiledCode?.javascript) {
+      if (!compiledCode) {
         setError('No compiled code available');
         return;
       }
 
       try {
-        const EvaluatedComponent = await evaluateComponent(compiledCode.javascript, compiledCode.componentName);
+        // Component name is always "LessonComponent" for all generated lessons
+        const EvaluatedComponent = await evaluateComponent(compiledCode, 'LessonComponent');
 
         if (!cancelled) {
           setComponent(() => EvaluatedComponent);

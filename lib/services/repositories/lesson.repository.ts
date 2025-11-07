@@ -1,33 +1,34 @@
 /**
- * Lesson Repository Interface
+ * Lesson Repository
  *
- * Abstraction for lesson table operations.
- * Enables dependency injection and testability by decoupling from Supabase.
+ * Abstraction for lesson table operations with consolidated status tracking.
+ * Status is tracked using timestamp and metadata columns directly on the lesson table.
  */
 
-import type { Lesson, LessonStatus } from '@/lib/types/lesson';
-import { createClient } from '@/lib/supabase/server';
 import { logger } from '@/lib/services/logger';
+import { createClient } from '@/lib/supabase/server';
+import type { Lesson, LessonStatus } from '@/lib/types/lesson';
 
 /**
- * Repository for lesson_status_record table for status tracking (separate from lesson table).
+ * Repository for lesson table operations
  */
 export class LessonRepository {
   /**
    * Create a new lesson with generated TSX code
    *
-   * Note: Status is NOT stored on lesson table. Use createStatusRecord() separately.
-   * Compiled code is added later after validation using updateCompiledCode().
+   * Creates lesson with initial generated code linked to an outline request.
+   * File paths and compiled code are added after file writing.
+   * Status tracking is done via updateStatus() method.
    */
-  async create(title: string, generatedCode: { tsxCode: string; componentName: string }): Promise<Lesson> {
+  async create(outlineRequestId: string, title: string, generatedCode: string): Promise<Lesson> {
     const supabase = await createClient();
 
     const { data, error } = await supabase
       .from('lesson')
       .insert({
+        outline_request_id: outlineRequestId,
         title,
-        generated_code: generatedCode, // JSONB column with { tsxCode, componentName }
-        // compiled_code is null initially, added after validation
+        generated_code: generatedCode, // Plain text TSX code
       })
       .select()
       .single();
@@ -43,24 +44,54 @@ export class LessonRepository {
   /**
    * Get number of validation attempts for a lesson
    *
-   * Counts existing 'lesson.validating' status records to support retry logic
+   * Reads the validation_attempts column to support retry logic
    * that survives process crashes.
    */
   async getValidationAttempts(lessonId: string): Promise<number> {
     const supabase = await createClient();
 
-    const { data, error } = await supabase
-      .from('lesson_status_record')
-      .select('id')
-      .eq('lesson_id', lessonId)
-      .eq('status', 'lesson.validating');
+    const { data, error } = await supabase.from('lesson').select('validation_attempts').eq('id', lessonId).single();
 
     if (error) {
       logger.error('Failed to get validation attempts:', error);
       throw new Error(`Failed to get validation attempts: ${error.message}`);
     }
 
-    return data?.length || 0;
+    return data?.validation_attempts || 0;
+  }
+
+  /**
+   * Increment validation attempts counter
+   *
+   * Called each time a validation attempt is made.
+   */
+  async incrementValidationAttempts(lessonId: string): Promise<void> {
+    const supabase = await createClient();
+
+    // Read current value
+    const { data: currentData, error: readError } = await supabase
+      .from('lesson')
+      .select('validation_attempts')
+      .eq('id', lessonId)
+      .single();
+
+    if (readError) {
+      logger.error('Failed to read validation attempts:', readError);
+      throw new Error(`Failed to read validation attempts: ${readError.message}`);
+    }
+
+    const currentAttempts = currentData?.validation_attempts || 0;
+
+    // Increment
+    const { error: updateError } = await supabase
+      .from('lesson')
+      .update({ validation_attempts: currentAttempts + 1 })
+      .eq('id', lessonId);
+
+    if (updateError) {
+      logger.error('Failed to increment validation attempts:', updateError);
+      throw new Error(`Failed to increment validation attempts: ${updateError.message}`);
+    }
   }
 
   /**
@@ -68,16 +99,13 @@ export class LessonRepository {
    *
    * Called after TSX validation and compilation succeed.
    */
-  async updateCompiledCode(
-    lessonId: string,
-    compiledCode: { javascript: string; componentName: string },
-  ): Promise<void> {
+  async updateCompiledCode(lessonId: string, compiledCode: string): Promise<void> {
     const supabase = await createClient();
 
     const { error } = await supabase
       .from('lesson')
       .update({
-        compiled_code: compiledCode, // JSONB column
+        compiled_code: compiledCode, // Plain text JavaScript code
       })
       .eq('id', lessonId);
 
@@ -88,21 +116,74 @@ export class LessonRepository {
   }
 
   /**
-   * Update lesson with regenerated TSX code during validation retry
+   * Update lesson with generated and compiled file paths
    *
-   * Called when LLM regenerates TSX code based on validation errors.
-   * Updates the generated_code column with new TSX before next validation attempt.
+   * Called after compileAndWriteTSX() writes files to disk.
+   * Stores both TSX source path and compiled JS path for observability.
    */
-  async updateGeneratedCode(
+  async updateFilePaths(
     lessonId: string,
-    generatedCode: { tsxCode: string; componentName: string },
+    filePaths: { generatedFilePath: string; compiledFilePath: string },
   ): Promise<void> {
     const supabase = await createClient();
 
     const { error } = await supabase
       .from('lesson')
       .update({
-        generated_code: generatedCode, // JSONB column with { tsxCode, componentName }
+        generated_file_path: filePaths.generatedFilePath,
+        compiled_file_path: filePaths.compiledFilePath,
+      })
+      .eq('id', lessonId);
+
+    if (error) {
+      logger.error('Failed to update file paths:', error);
+      throw new Error(`Failed to update file paths: ${error.message}`);
+    }
+  }
+
+  /**
+   * Update lesson with both compiled code and file paths
+   *
+   * Combined update to reduce database roundtrips.
+   * Called after compileAndWriteTSX() when both code and paths are available.
+   */
+  async updateCompiledCodeAndPaths(
+    lessonId: string,
+    update: {
+      compiledCode: string;
+      filePaths: { generatedFilePath: string; compiledFilePath: string };
+    },
+  ): Promise<void> {
+    const supabase = await createClient();
+
+    const { error } = await supabase
+      .from('lesson')
+      .update({
+        compiled_code: update.compiledCode, // Plain text JavaScript code
+        generated_file_path: update.filePaths.generatedFilePath,
+        compiled_file_path: update.filePaths.compiledFilePath,
+      })
+      .eq('id', lessonId);
+
+    if (error) {
+      logger.error('Failed to update compiled code and paths:', error);
+      throw new Error(`Failed to update compiled code and paths: ${error.message}`);
+    }
+  }
+
+  /**
+   * Update lesson with regenerated TSX code during validation retry
+   *
+   * Called when LLM regenerates TSX code based on validation errors.
+   * Updates the generated_code column with new TSX before next validation attempt.
+   */
+  async updateGeneratedCode(lessonId: string, generatedCode: string): Promise<void> {
+    const supabase = await createClient();
+
+    const { error } = await supabase
+      .from('lesson')
+      .update({
+        generated_code: generatedCode, // Plain text TSX code
       })
       .eq('id', lessonId);
 
@@ -113,49 +194,47 @@ export class LessonRepository {
   }
 
   /**
-   * Create status record in lesson_status_record
+   * Update lesson status
    *
-   * Records each status transition with optional metadata.
-   * Status changes are append-only for audit trail.
+   * Updates the timestamp and metadata columns for the given status.
+   * Each status has its own timestamp column (e.g., lesson_generated_at, lesson_validating_at)
+   * and metadata column (e.g., lesson_generated_metadata, lesson_validating_metadata).
+   *
+   * @param lessonId - Lesson ID
+   * @param status - New status (uses DB enum from database.types.ts)
+   * @param metadata - Optional metadata (validation results, error details, etc.)
    */
-  async createStatusRecord(lessonId: string, status: LessonStatus, metadata?: unknown): Promise<void> {
+  async updateStatus(lessonId: string, status: LessonStatus, metadata?: unknown): Promise<void> {
     const supabase = await createClient();
 
-    const statusData: {
-      lesson_id: string;
-      status: LessonStatus;
-      metadata?: unknown;
-    } = {
-      lesson_id: lessonId,
-      status,
+    // Map status enum to column names
+    const statusColumnMap: Record<LessonStatus, { timestamp: string; metadata: string }> = {
+      'lesson.generated': { timestamp: 'lesson_generated_at', metadata: 'lesson_generated_metadata' },
+      'lesson.validating': { timestamp: 'lesson_validating_at', metadata: 'lesson_validating_metadata' },
+      'lesson.compiled': { timestamp: 'lesson_compiled_at', metadata: 'lesson_compiled_metadata' },
+      'error': { timestamp: 'error_at', metadata: 'error_metadata' },
+      'failed': { timestamp: 'failed_at', metadata: 'failed_metadata' },
+    };
+
+    const columns = statusColumnMap[status];
+    if (!columns) {
+      throw new Error(`Unknown status: ${status}`);
+    }
+
+    // Build update data with timestamp and optional metadata
+    const updateData: Record<string, unknown> = {
+      [columns.timestamp]: new Date().toISOString(),
     };
 
     if (metadata !== undefined) {
-      statusData.metadata = metadata;
+      updateData[columns.metadata] = metadata;
     }
 
-    const { error: insertError } = await supabase.from('lesson_status_record').insert(statusData);
-
-    if (insertError) {
-      logger.error(`Failed to create lesson status record for ${status}:`, insertError);
-      throw new Error(`Failed to create lesson status record: ${insertError.message}`);
-    }
-  }
-
-  /**
-   * Create mapping between outline request and lesson
-   */
-  async createMapping(outlineRequestId: string, lessonId: string): Promise<void> {
-    const supabase = await createClient();
-
-    const { error } = await supabase.from('mapping_outline_request_lesson').insert({
-      outline_request_id: outlineRequestId,
-      lesson_id: lessonId,
-    });
+    const { error } = await supabase.from('lesson').update(updateData).eq('id', lessonId);
 
     if (error) {
-      logger.error('Failed to create mapping:', error);
-      throw new Error(`Failed to create mapping: ${error.message}`);
+      logger.error(`Failed to update lesson status to ${status}:`, error);
+      throw new Error(`Failed to update lesson status: ${error.message}`);
     }
   }
 }

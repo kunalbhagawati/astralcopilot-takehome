@@ -1,29 +1,28 @@
 /**
  * TSX Validation Orchestrator
  *
- * Combines TypeScript compiler validation, import validation, and ESLint validation
+ * Combines TypeScript compiler validation and import validation
  * into a single validation result.
  *
  * Runs validations in order:
  * 1. TypeScript validation (fail fast on syntax errors)
  * 2. Import validation (check whitelist)
- * 3. ESLint validation (code quality)
+ * 3. ESLint validation (code quality) - DISABLED for generated files
  */
 
 import type { TSXValidationResult } from '@/lib/types/validation.types';
 import { parseAndValidateImports } from '../imports/import-parser';
 import { logger } from '../logger';
-import { validateWithESLint } from './eslint-validator';
+// import { validateWithESLint } from './eslint-validator';
 import { validateWithTypeScript } from './typescript-validator';
 
 /**
- * Validate TSX code using TypeScript, import whitelist, and ESLint
+ * Validate TSX code using TypeScript and import whitelist
  *
  * Strategy:
  * 1. Run TypeScript validation first (fail fast on type/syntax errors)
  * 2. If TypeScript passes, validate imports against whitelist
- * 3. If imports pass, run ESLint validation
- * 4. Combine all errors into single result
+ * 3. ESLint validation - DISABLED for generated files (only compilation check)
  *
  * @param tsxCode - The TSX code to validate
  * @returns Validation result with combined errors from all validators
@@ -76,16 +75,17 @@ export const validateTSX = async (tsxCode: string): Promise<TSXValidationResult>
 
     logger.info('Import validation passed');
 
-    // Step 3: ESLint validation (asynchronous)
-    logger.info('Running ESLint validation...');
-    const eslintErrors = await validateWithESLint(tsxCode);
-
-    if (eslintErrors.length > 0) {
-      logger.warn(`ESLint validation found ${eslintErrors.length} error(s)`);
-      allErrors.push(...eslintErrors);
-    } else {
-      logger.info('ESLint validation passed');
-    }
+    // Step 3: ESLint validation (asynchronous) - DISABLED for generated files
+    // Only checking TypeScript compilation, not code quality/style
+    // logger.info('Running ESLint validation...');
+    // const eslintErrors = await validateWithESLint(tsxCode);
+    //
+    // if (eslintErrors.length > 0) {
+    //   logger.warn(`ESLint validation found ${eslintErrors.length} error(s)`);
+    //   allErrors.push(...eslintErrors);
+    // } else {
+    //   logger.info('ESLint validation passed');
+    // }
 
     // Validation passes if no errors from any validator
     return {

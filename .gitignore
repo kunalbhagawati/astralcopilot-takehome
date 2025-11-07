@@ -54,3 +54,7 @@ next-env.d.ts
 
 .claude/hooks/
 .claude/settings.json
+
+# Generated lesson files
+tmp/
+.tmp/

@@ -3,7 +3,8 @@
  *
  * Using Supabase SSR client - https://supabase.com/docs/guides/auth/server-side
  *
- * Handles outline_request table operations and status tracking in outline_request_status_record.
+ * Handles outline_request table operations with consolidated status tracking
+ * using timestamp and metadata columns directly on the outline_request table.
  */
 
 import { createClient } from '@/lib/supabase/server';
@@ -35,10 +36,11 @@ export class OutlineRequestRepository {
   }
 
   /**
-   * Create status record in outline_request_status_record
+   * Update outline request status
    *
-   * Records each status transition with optional metadata.
-   * Status changes are append-only for audit trail.
+   * Updates the timestamp and metadata columns for the given status.
+   * Each status has its own timestamp column (e.g., submitted_at, outline_validating_at)
+   * and metadata column (e.g., outline_validating_metadata).
    *
    * Metadata structure:
    * - For success states with LLM output: store LLM output directly
@@ -49,27 +51,45 @@ export class OutlineRequestRepository {
    * @param status - New status (uses DB enum from database.types.ts)
    * @param metadata - Optional metadata (LLM output, error details, or failure reasons)
    */
-  async createStatusRecord(id: string, status: OutlineRequestStatus, metadata?: unknown): Promise<void> {
+  async updateStatus(id: string, status: OutlineRequestStatus, metadata?: unknown): Promise<void> {
     const supabase = await createClient();
 
-    const statusData: {
-      outline_request_id: string;
-      status: OutlineRequestStatus;
-      metadata?: unknown;
-    } = {
-      outline_request_id: id,
-      status,
+    // Map status enum to column names
+    const statusColumnMap: Record<OutlineRequestStatus, { timestamp: string; metadata: string }> = {
+      'submitted': { timestamp: 'submitted_at', metadata: 'submitted_metadata' },
+      'outline.validating': { timestamp: 'outline_validating_at', metadata: 'outline_validating_metadata' },
+      'outline.validated': { timestamp: 'outline_validated_at', metadata: 'outline_validated_metadata' },
+      'outline.blocks.generating': {
+        timestamp: 'outline_blocks_generating_at',
+        metadata: 'outline_blocks_generating_metadata',
+      },
+      'outline.blocks.generated': {
+        timestamp: 'outline_blocks_generated_at',
+        metadata: 'outline_blocks_generated_metadata',
+      },
+      'error': { timestamp: 'error_at', metadata: 'error_metadata' },
+      'failed': { timestamp: 'failed_at', metadata: 'failed_metadata' },
+    };
+
+    const columns = statusColumnMap[status];
+    if (!columns) {
+      throw new Error(`Unknown status: ${status}`);
+    }
+
+    // Build update data with timestamp and optional metadata
+    const updateData: Record<string, unknown> = {
+      [columns.timestamp]: new Date().toISOString(),
     };
 
     if (metadata !== undefined) {
-      statusData.metadata = metadata;
+      updateData[columns.metadata] = metadata;
     }
 
-    const { error: insertError } = await supabase.from('outline_request_status_record').insert(statusData);
+    const { error } = await supabase.from('outline_request').update(updateData).eq('id', id);
 
-    if (insertError) {
-      logger.error(`Failed to create outline request status record for ${status}:`, insertError);
-      throw new Error(`Failed to create outline request status record: ${insertError.message}`);
+    if (error) {
+      logger.error(`Failed to update outline request status to ${status}:`, error);
+      throw new Error(`Failed to update outline request status: ${error.message}`);
     }
   }
 
@@ -90,6 +110,26 @@ export class OutlineRequestRepository {
     if (error) {
       logger.error('Failed to update outline request blocks:', error);
       throw new Error(`Failed to update outline request blocks: ${error.message}`);
+    }
+  }
+
+  /**
+   * Update number of lessons for outline request
+   *
+   * Sets the num_lessons column when blocks are generated.
+   * This indicates how many lessons will be created from the outline.
+   *
+   * @param id - Outline request ID
+   * @param numLessons - Number of lessons to be generated
+   */
+  async updateNumLessons(id: string, numLessons: number): Promise<void> {
+    const supabase = await createClient();
+
+    const { error } = await supabase.from('outline_request').update({ num_lessons: numLessons }).eq('id', id);
+
+    if (error) {
+      logger.error('Failed to update outline request num_lessons:', error);
+      throw new Error(`Failed to update outline request num_lessons: ${error.message}`);
     }
   }
 }

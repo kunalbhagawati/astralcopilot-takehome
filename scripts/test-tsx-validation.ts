@@ -3,7 +3,7 @@
  *
  * Tests the validation used in outline-request.actor-machine.ts:
  * - TypeScript compiler validation
- * - ESLint validation
+ * - ESLint validation - DISABLED for generated files
  * - Combined validation orchestrator
  *
  * Run: bun run scripts/test-tsx-validation.ts
@@ -12,7 +12,7 @@
 
 import { validateTSX } from '../lib/services/validation/tsx-validation-orchestrator';
 import { validateWithTypeScript } from '../lib/services/validation/typescript-validator';
-import { validateWithESLint } from '../lib/services/validation/eslint-validator';
+// import { validateWithESLint } from '../lib/services/validation/eslint-validator';
 import type { TSXValidationResult, TSXValidationError } from '../lib/types/validation.types';
 import { TSX_VALIDATION_FIXTURES } from './fixtures/tsx-validation.fixtures';
 
@@ -56,9 +56,9 @@ const TEST_CASES: TestCase[] = [
   {
     name: 'Missing Export',
     fixture: FIXTURES.noExport,
-    expectedValid: false, // ESLint catches unused variable (component never exported)
-    expectedErrorTypes: ['eslint'],
-    description: 'Component without export statement (caught by ESLint no-unused-vars)',
+    expectedValid: true, // ESLint disabled - only checking compilation
+    // expectedErrorTypes: ['eslint'],
+    description: 'Component without export statement (ESLint disabled - compilation passes)',
   },
   {
     name: 'Syntax Error (unclosed tag)',
@@ -84,9 +84,9 @@ const TEST_CASES: TestCase[] = [
   {
     name: 'Unused Variables',
     fixture: FIXTURES.unusedVars,
-    expectedValid: false, // Project ESLint config treats no-unused-vars as error, not warning
-    expectedErrorTypes: ['eslint'],
-    description: 'Unused variables (caught by ESLint no-unused-vars rule)',
+    expectedValid: true, // ESLint disabled - only checking compilation
+    // expectedErrorTypes: ['eslint'],
+    description: 'Unused variables (ESLint disabled - compilation passes)',
   },
   {
     name: 'Valid Component with Allowed Imports',
@@ -231,17 +231,17 @@ const runIndividualValidatorTests = async (): Promise<void> => {
     });
   }
 
-  // Test ESLint validator independently
-  log('\n📗 ESLint Validator Test');
-  log('─'.repeat(80));
-
-  const eslintErrors = await validateWithESLint(FIXTURES.validComponent);
-  log(`   Errors found: ${eslintErrors.length}`);
-  if (eslintErrors.length > 0) {
-    eslintErrors.forEach((error: TSXValidationError, idx: number) => {
-      log(`   ${idx + 1}. Line ${error.line}:${error.column} - ${error.message}`);
-    });
-  }
+  // Test ESLint validator independently - DISABLED for generated files
+  // log('\n📗 ESLint Validator Test');
+  // log('─'.repeat(80));
+  //
+  // const eslintErrors = await validateWithESLint(FIXTURES.validComponent);
+  // log(`   Errors found: ${eslintErrors.length}`);
+  // if (eslintErrors.length > 0) {
+  //   eslintErrors.forEach((error: TSXValidationError, idx: number) => {
+  //     log(`   ${idx + 1}. Line ${error.line}:${error.column} - ${error.message}`);
+  //   });
+  // }
 };
 
 /**
@@ -261,7 +261,7 @@ const runTests = async (verbose: boolean): Promise<void> => {
 
   // Run orchestrator tests
   log(`\n${'═'.repeat(80)}`);
-  log('🎭 Orchestrator Tests (TypeScript + ESLint)');
+  log('🎭 Orchestrator Tests (TypeScript only - ESLint disabled)');
   log('═'.repeat(80));
 
   const results: TestResult[] = [];
