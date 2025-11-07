@@ -203,7 +203,7 @@ export const LessonComponent = () => {
   missingModuleImport: `import React from 'react';
 import QuizComponent from './QuizComponent';
 
-export const PhotosynthesisLesson = () => {
+export const LessonComponent = () => {
   return (
     <div>
       <h1>Photosynthesis and You</h1>
@@ -221,11 +221,11 @@ export const PhotosynthesisLesson = () => {
    * Self-referencing component (infinite loop pattern)
    * Valid TypeScript but would cause runtime error
    */
-  infiniteLoop: `export const InfiniteLesson = () => {
+  infiniteLoop: `export const LessonComponent = () => {
   return (
     <div>
       <h1>This will loop forever</h1>
-      <InfiniteLesson />
+      <LessonComponent />
     </div>
   );
 };`,
@@ -234,7 +234,7 @@ export const PhotosynthesisLesson = () => {
    * Missing React import (pre-React 17 pattern)
    * Error when JSX is used without React in scope
    */
-  missingReactImport: `export const NoReactLesson = () => {
+  missingReactImport: `export const LessonComponent = () => {
   return (
     <div>
       <h1>Missing React Import</h1>
