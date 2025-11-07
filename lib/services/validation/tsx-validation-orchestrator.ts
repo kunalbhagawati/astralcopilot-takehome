@@ -1,28 +1,32 @@
 /**
  * TSX Validation Orchestrator
  *
- * Combines TypeScript compiler validation and ESLint validation
+ * Combines TypeScript compiler validation, import validation, and ESLint validation
  * into a single validation result.
  *
- * Runs TypeScript validation first (fail fast on syntax errors),
- * then runs ESLint if TypeScript passes.
+ * Runs validations in order:
+ * 1. TypeScript validation (fail fast on syntax errors)
+ * 2. Import validation (check whitelist)
+ * 3. ESLint validation (code quality)
  */
 
 import type { TSXValidationResult } from '@/lib/types/validation.types';
+import { parseAndValidateImports } from '../imports/import-parser';
 import { logger } from '../logger';
 import { validateWithESLint } from './eslint-validator';
 import { validateWithTypeScript } from './typescript-validator';
 
 /**
- * Validate TSX code using both TypeScript compiler and ESLint
+ * Validate TSX code using TypeScript, import whitelist, and ESLint
  *
  * Strategy:
  * 1. Run TypeScript validation first (fail fast on type/syntax errors)
- * 2. If TypeScript passes, run ESLint validation
- * 3. Combine all errors into single result
+ * 2. If TypeScript passes, validate imports against whitelist
+ * 3. If imports pass, run ESLint validation
+ * 4. Combine all errors into single result
  *
  * @param tsxCode - The TSX code to validate
- * @returns Validation result with combined errors from both validators
+ * @returns Validation result with combined errors from all validators
  */
 export const validateTSX = async (tsxCode: string): Promise<TSXValidationResult> => {
   const allErrors: TSXValidationResult['errors'] = [];
@@ -36,7 +40,7 @@ export const validateTSX = async (tsxCode: string): Promise<TSXValidationResult>
       logger.warn(`TypeScript validation found ${tsErrors.length} error(s)`);
       allErrors.push(...tsErrors);
 
-      // If TypeScript has errors, skip ESLint (no point linting broken code)
+      // If TypeScript has errors, skip remaining validation (no point checking broken code)
       return {
         valid: false,
         errors: allErrors,
@@ -45,7 +49,34 @@ export const validateTSX = async (tsxCode: string): Promise<TSXValidationResult>
 
     logger.info('TypeScript validation passed');
 
-    // Step 2: ESLint validation (asynchronous)
+    // Step 2: Import validation (synchronous)
+    logger.info('Running import validation...');
+    const importValidation = parseAndValidateImports(tsxCode);
+
+    if (!importValidation.valid) {
+      logger.warn(`Import validation found ${importValidation.errors.length} error(s)`);
+
+      // Convert import errors to TSXValidationError format
+      const importErrors = importValidation.errors.map((err) => ({
+        type: 'typescript' as const,
+        severity: 'error' as const,
+        line: 1,
+        column: 1,
+        message: `Import validation failed: ${err.source} - ${err.message}`,
+      }));
+
+      allErrors.push(...importErrors);
+
+      // If imports are invalid, skip ESLint
+      return {
+        valid: false,
+        errors: allErrors,
+      };
+    }
+
+    logger.info('Import validation passed');
+
+    // Step 3: ESLint validation (asynchronous)
     logger.info('Running ESLint validation...');
     const eslintErrors = await validateWithESLint(tsxCode);
 
@@ -56,7 +87,7 @@ export const validateTSX = async (tsxCode: string): Promise<TSXValidationResult>
       logger.info('ESLint validation passed');
     }
 
-    // Validation passes if no errors from either validator
+    // Validation passes if no errors from any validator
     return {
       valid: allErrors.length === 0,
       errors: allErrors,

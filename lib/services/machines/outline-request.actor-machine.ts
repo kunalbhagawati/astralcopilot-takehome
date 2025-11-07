@@ -1,14 +1,14 @@
 // Using XState v5.23.0 - https://statelyai.github.io/xstate/
 import type { ActionableBlocksResult, BlockGenerationInput } from '@/lib/types/actionable-blocks.types';
 import type { Database } from '@/lib/types/database.types';
-import type { TSXGenerationInput, TSXGenerationResult } from '@/lib/types/tsx-generation.types';
+import type { LessonTSX, TSXGenerationResult } from '@/lib/types/tsx-generation.types';
 import type { EnhancedValidationResult } from '@/lib/types/validation.types';
 import { assign, fromPromise, setup } from 'xstate';
 import type { LLMClient } from '../adapters/llm-client';
 import type { OutlineValidator } from '../adapters/outline-validator';
 import { compileTSX } from '../compilation/tsx-compiler';
 import { logger } from '../logger';
-import type { LessonRepository } from '../repositories/lesson.repository';
+import { LessonRepository } from '../repositories/lesson.repository';
 import type { OutlineRequestRepository } from '../repositories/outline-request.repository';
 import { extractValidationFeedback } from '../validation-rules.service';
 import { validateTSX } from '../validation/tsx-validation-orchestrator';
@@ -145,7 +145,12 @@ export const outlineRequestActorMachine = setup({
     }),
 
     /**
-     * Stage 3: Generate TSX code for all lessons
+     * Stage 3: Generate TSX code for all lessons (sequential generation)
+     *
+     * Generates one lesson at a time to enable:
+     * - Better error isolation per lesson
+     * - Future parallelization support
+     * - 1 prompt = 1 lesson = 1 table row
      */
     generateTSX: fromPromise<
       TSXGenerationResult,
@@ -159,11 +164,40 @@ export const outlineRequestActorMachine = setup({
       // Persist lessons generating status
       await input.outlineRepo.createStatusRecord(input.outlineRequestId, 'lessons.generating', undefined);
 
-      const tsxInput: TSXGenerationInput = {
-        blocksResult: input.blocksResult,
+      const { llmClient, blocksResult } = input;
+      const { lessons, metadata } = blocksResult;
+
+      // Extract context for single-lesson generation
+      const context = {
+        topic: metadata.topic,
+        ageRange: metadata.ageRange,
+        complexity: metadata.complexity,
+        domains: metadata.domains,
       };
 
-      const tsxResult = await input.llmClient.generateTSXFromBlocks(tsxInput);
+      // Generate TSX for each lesson sequentially
+      const generatedLessons: LessonTSX[] = [];
+
+      for (const lesson of lessons) {
+        const singleLessonInput = {
+          title: lesson.title,
+          blocks: lesson.blocks,
+          context,
+        };
+
+        const lessonResult = await llmClient.generateSingleLessonTSX(singleLessonInput);
+        generatedLessons.push(lessonResult);
+      }
+
+      // Assemble final result in same format as batch generation
+      const tsxResult: TSXGenerationResult = {
+        lessons: generatedLessons,
+        metadata: {
+          lessonCount: generatedLessons.length,
+          model: process.env.OLLAMA_GENERATION_MODEL || 'deepseek-coder-v2',
+          generatedAt: new Date().toISOString(),
+        },
+      };
 
       // Persist lessons generating status with metadata
       await input.outlineRepo.createStatusRecord(input.outlineRequestId, 'lessons.generating', tsxResult);
@@ -180,12 +214,13 @@ export const outlineRequestActorMachine = setup({
       { allCompleted: boolean; anyFailed: boolean; anyErrored: boolean; totalLessons: number },
       {
         lessonRepo: LessonRepository;
+        llmClient: LLMClient;
         outlineRequestId: string;
         blocksResult: ActionableBlocksResult;
         tsxResult: TSXGenerationResult;
       }
     >(async ({ input }) => {
-      const { lessonRepo, outlineRequestId, blocksResult, tsxResult } = input;
+      const { lessonRepo, llmClient, outlineRequestId, blocksResult, tsxResult } = input;
 
       const maxRetries = Number(process.env.LLM_GENERATION_MAX_RETRIES || 3);
       const maxAttempts = maxRetries + 1;
@@ -264,6 +299,68 @@ export const outlineRequestActorMachine = setup({
                 message: 'Max validation retries exceeded',
               });
               failedCount++;
+              break; // Move to next lesson
+            }
+
+            // Regenerate TSX with LLM feedback
+            try {
+              logger.info(`Regenerating TSX for lesson ${createdLesson.id}, attempt ${retryCount + 1}`);
+
+              const regenerationResult = await llmClient.regenerateTSXWithFeedback({
+                originalCode: generatedCode.tsxCode,
+                componentName: generatedCode.componentName,
+                validationErrors: validationResult.errors,
+                lessonTitle: lesson.title,
+                blocks: lesson.blocks,
+                attemptNumber: retryCount + 1,
+              });
+
+              // Update with regenerated code
+              generatedCode.tsxCode = regenerationResult.tsxCode;
+              generatedCode.componentName = regenerationResult.componentName;
+
+              // Update database with regenerated code
+              await lessonRepo.updateGeneratedCode(createdLesson.id, generatedCode);
+
+              // Log fixes applied
+              await lessonRepo.createStatusRecord(createdLesson.id, 'lesson.validating' as LessonStatus, {
+                attempt: retryCount + 1,
+                regenerated: true,
+                fixedErrors: regenerationResult.fixedErrors,
+              });
+            } catch (regenerationError) {
+              // LLM regeneration failed - mark as error (system failure)
+              const errorMessage =
+                regenerationError instanceof Error ? regenerationError.message : 'LLM regeneration failed';
+              const errorName = regenerationError instanceof Error ? regenerationError.name : 'RegenerationError';
+
+              // Detect schema validation failures (common issue)
+              const isSchemaError =
+                errorMessage.includes('did not match schema') ||
+                errorMessage.includes('No object generated') ||
+                errorMessage.includes('response did not match schema');
+
+              if (isSchemaError) {
+                logger.error(`LLM regeneration schema validation failed for lesson ${createdLesson.id}:`, {
+                  message: errorMessage,
+                  attempt: retryCount + 1,
+                  hint: 'LLM may have returned invalid JSON structure or missing required fields',
+                });
+              } else {
+                logger.error(`LLM regeneration failed for lesson ${createdLesson.id}:`, regenerationError);
+              }
+
+              await lessonRepo.createStatusRecord(createdLesson.id, 'error' as LessonStatus, {
+                message: errorMessage,
+                error: errorName,
+                attempt: retryCount + 1,
+                context: {
+                  stage: 'tsx_regeneration',
+                  isSchemaError,
+                  validationErrorCount: validationResult?.errors?.length || 0,
+                },
+              });
+              errorCount++;
               break; // Move to next lesson
             }
           }
@@ -495,6 +592,7 @@ export const outlineRequestActorMachine = setup({
         src: 'validateAndCompileLessons',
         input: ({ context }) => ({
           lessonRepo: context.lessonRepo,
+          llmClient: context.llmClient,
           outlineRequestId: context.outlineRequestId,
           blocksResult: context.blocksResult!,
           tsxResult: context.tsxResult!,

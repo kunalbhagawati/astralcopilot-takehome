@@ -18,17 +18,34 @@ import {
   BLOCKS_GENERATION_SYSTEM_PROMPT,
   buildBlocksGenerationUserPrompt,
 } from '../../prompts/blocks-generation.prompts';
-import { TSX_GENERATION_SYSTEM_PROMPT, buildTSXGenerationUserPrompt } from '../../prompts/tsx-generation.prompts';
+import {
+  TSX_GENERATION_SYSTEM_PROMPT,
+  buildTSXGenerationUserPrompt,
+  buildSingleLessonTSXPrompt,
+} from '../../prompts/tsx-generation.prompts';
+import { TSX_REGENERATION_SYSTEM_PROMPT, buildTSXRegenerationUserPrompt } from '../../prompts/tsx-regeneration.prompts';
 import { VALIDATION_SYSTEM_PROMPT, buildValidationUserPrompt } from '../../prompts/validation.prompts';
 import type { ActionableBlocksResult, BlockGenerationInput } from '../../types/actionable-blocks.types';
 import { ActionableBlocksResultSchema } from '../../types/actionable-blocks.types';
-import type { TSXGenerationInput, TSXGenerationResult } from '../../types/tsx-generation.types';
-import { TSXGenerationResultSchema } from '../../types/tsx-generation.types';
+import type {
+  TSXGenerationInput,
+  TSXGenerationResult,
+  TSXRegenerationInput,
+  TSXRegenerationResult,
+  SingleLessonTSXInput,
+  SingleLessonTSXResult,
+} from '../../types/tsx-generation.types';
+import {
+  TSXGenerationResultSchema,
+  TSXRegenerationResultSchema,
+  SingleLessonTSXResultSchema,
+} from '../../types/tsx-generation.types';
 import type { EnhancedValidationResult } from '../../types/validation.types';
 import { EnhancedValidationResultSchema } from '../../types/validation.types';
 import { transformLLMError } from '../utils/llm-error-transformer';
 import { generateBlocks } from './blocks-generator-core';
-import { generateTSX } from './tsx-generator-core';
+import { generateTSX, generateSingleLessonTSX } from './tsx-generator-core';
+import { regenerateTSX } from './tsx-regenerator-core';
 import { createAIModel } from './llm-config';
 import { generateValidationResult } from './outline-validation.core';
 
@@ -61,7 +78,7 @@ export interface LLMClientConfig {
 const DEFAULT_CONFIG: Required<LLMClientConfig> = {
   host: process.env.OLLAMA_HOST || 'http://localhost:11434',
   validationModel: process.env.OLLAMA_VALIDATION_MODEL || 'llama3.1',
-  generationModel: process.env.OLLAMA_GENERATION_MODEL || 'deepseek-coder-v2',
+  generationModel: process.env.OLLAMA_GENERATION_MODEL || 'qwen2.5-coder',
   validationTemperature: 0.2,
   generationTemperature: 0.6,
   timeout: 60000,
@@ -175,6 +192,79 @@ export class LLMClient {
         modelName: this.config.generationModel,
         host: this.config.host,
         operation: 'TSX generation',
+      });
+      throw new Error(llmError.message);
+    }
+  }
+
+  /**
+   * Regenerate TSX code based on validation errors
+   *
+   * Used in validation retry loops when initial TSX fails validation.
+   * Takes validation errors as feedback and generates fixed code.
+   *
+   * Flow:
+   * 1. TSX generation produces code
+   * 2. Validation detects errors (TypeScript, ESLint, imports)
+   * 3. TSX regeneration (this method) analyzes errors and fixes code
+   * 4. Validation re-runs on fixed code
+   * 5. Repeat until validation passes or max retries exceeded
+   *
+   * Using Vercel AI SDK's generateObject() for structured output generation.
+   * Recommended model: deepseek-coder-v2 (specialized for code generation)
+   *
+   * @param input - TSX regeneration input (original code + validation errors)
+   * @returns TSX regeneration result with fixed code
+   */
+  async regenerateTSXWithFeedback(input: TSXRegenerationInput): Promise<TSXRegenerationResult> {
+    try {
+      const model = createAIModel(this.config.generationModel);
+
+      return await regenerateTSX(input, {
+        model,
+        systemPrompt: TSX_REGENERATION_SYSTEM_PROMPT,
+        buildUserPrompt: buildTSXRegenerationUserPrompt,
+        schema: TSXRegenerationResultSchema,
+        temperature: 0.3, // Even lower temperature for error fixing (more deterministic)
+      });
+    } catch (error) {
+      const llmError = transformLLMError(error, {
+        modelName: this.config.generationModel,
+        host: this.config.host,
+        operation: 'TSX regeneration',
+      });
+      throw new Error(llmError.message);
+    }
+  }
+
+  /**
+   * Generate TSX code for a single lesson
+   *
+   * Sequential generation approach (1 prompt = 1 lesson = 1 table row).
+   * Enables better parallelization and error isolation compared to batch generation.
+   *
+   * Using Vercel AI SDK's generateObject() for structured output generation.
+   * Recommended model: deepseek-coder-v2 (specialized for code generation)
+   *
+   * @param input - Single lesson TSX input (title, blocks, context)
+   * @returns Single lesson TSX result
+   */
+  async generateSingleLessonTSX(input: SingleLessonTSXInput): Promise<SingleLessonTSXResult> {
+    try {
+      const model = createAIModel(this.config.generationModel);
+
+      return await generateSingleLessonTSX(input, {
+        model,
+        systemPrompt: TSX_GENERATION_SYSTEM_PROMPT,
+        buildUserPrompt: buildSingleLessonTSXPrompt,
+        schema: SingleLessonTSXResultSchema,
+        temperature: 0.4, // Lower temperature for code generation
+      });
+    } catch (error) {
+      const llmError = transformLLMError(error, {
+        modelName: this.config.generationModel,
+        host: this.config.host,
+        operation: 'single-lesson TSX generation',
       });
       throw new Error(llmError.message);
     }

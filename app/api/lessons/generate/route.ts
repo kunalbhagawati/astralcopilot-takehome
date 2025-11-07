@@ -3,10 +3,10 @@ import { getOutlineValidator } from '@/lib/services/adapters/outline-validator';
 import { logger } from '@/lib/services/logger';
 import { outlineRequestActorMachine } from '@/lib/services/machines/outline-request.actor-machine';
 import { OutlineRequestRepository } from '@/lib/services/repositories/outline-request.repository';
-import { SupabaseLessonRepository } from '@/lib/services/repositories/supabase.repository';
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { createActor } from 'xstate';
+import { LessonRepository } from '@/lib/services/repositories/lesson.repository';
 
 export async function POST(request: NextRequest) {
   logger.info('[API] POST /api/lessons/generate - Request received');
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
           validator: getOutlineValidator(),
           llmClient: createLLMClient(),
           outlineRepo,
-          lessonRepo: new SupabaseLessonRepository(),
+          lessonRepo: new LessonRepository(),
         },
       });
 
