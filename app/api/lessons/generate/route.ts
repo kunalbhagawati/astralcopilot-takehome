@@ -2,6 +2,7 @@ import { createLLMClient } from '@/lib/services/adapters/llm-client';
 import { getOutlineValidator } from '@/lib/services/adapters/outline-validator';
 import { logger } from '@/lib/services/logger';
 import { outlineRequestActorMachine } from '@/lib/services/machines/outline-request.actor-machine';
+import { registerActor } from '@/lib/services/machines/actor-registry';
 import { OutlineRequestRepository } from '@/lib/services/repositories/outline-request.repository';
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
@@ -76,6 +77,9 @@ export async function POST(request: NextRequest) {
           outlineRepo,
         },
       });
+
+      // Register actor to prevent garbage collection
+      registerActor(outlineRequest.id, actor, 'outline');
 
       // Subscribe for logging
       actor.subscribe({

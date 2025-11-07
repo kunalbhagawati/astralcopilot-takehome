@@ -30,14 +30,14 @@ export type Database = {
     Tables: {
       lesson: {
         Row: {
-          compiled_code: Json | null;
+          compiled_code: string | null;
           compiled_file_path: string | null;
           created_at: string | null;
           error_at: string | null;
           error_metadata: Json | null;
           failed_at: string | null;
           failed_metadata: Json | null;
-          generated_code: Json;
+          generated_code: string;
           generated_file_path: string | null;
           id: string;
           lesson_compiled_at: string | null;
@@ -52,14 +52,14 @@ export type Database = {
           validation_attempts: number | null;
         };
         Insert: {
-          compiled_code?: Json | null;
+          compiled_code?: string | null;
           compiled_file_path?: string | null;
           created_at?: string | null;
           error_at?: string | null;
           error_metadata?: Json | null;
           failed_at?: string | null;
           failed_metadata?: Json | null;
-          generated_code: Json;
+          generated_code: string;
           generated_file_path?: string | null;
           id?: string;
           lesson_compiled_at?: string | null;
@@ -74,14 +74,14 @@ export type Database = {
           validation_attempts?: number | null;
         };
         Update: {
-          compiled_code?: Json | null;
+          compiled_code?: string | null;
           compiled_file_path?: string | null;
           created_at?: string | null;
           error_at?: string | null;
           error_metadata?: Json | null;
           failed_at?: string | null;
           failed_metadata?: Json | null;
-          generated_code?: Json;
+          generated_code?: string;
           generated_file_path?: string | null;
           id?: string;
           lesson_compiled_at?: string | null;

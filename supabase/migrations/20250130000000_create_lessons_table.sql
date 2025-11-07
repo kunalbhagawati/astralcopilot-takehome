@@ -33,9 +33,9 @@ CREATE TABLE IF NOT EXISTS lesson (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   outline_request_id UUID NOT NULL REFERENCES outline_request(id) ON DELETE CASCADE,
   title TEXT,
-  generated_code JSONB NOT NULL,
+  generated_code text NOT NULL,
   generated_file_path TEXT,
-  compiled_code JSONB,
+  compiled_code text,
   compiled_file_path TEXT,
   validation_attempts INTEGER DEFAULT 0,
 

@@ -8,6 +8,7 @@ import type { OutlineRequestRepository } from '../repositories/outline-request.r
 import { LessonRepository } from '../repositories/lesson.repository';
 import { extractValidationFeedback } from '../validation-rules.service';
 import { lessonActorMachine } from './lesson.actor-machine';
+import { registerActor } from './actor-registry';
 import { logger } from '../logger';
 
 /**
@@ -102,7 +103,9 @@ export const outlineRequestActorMachine = setup({
     }),
 
     /**
-     * Stage 2: Generate actionable teaching blocks
+     * Stage 2: Generate actionable teaching blocks + spawn lesson machines
+     *
+     * Combined into one actor because final state invokes are unreliable (fire-and-forget).
      */
     generateBlocks: fromPromise<
       ActionableBlocksResult,
@@ -131,6 +134,75 @@ export const outlineRequestActorMachine = setup({
 
       // Update blocks generating status with result metadata
       await input.outlineRepo.updateStatus(input.outlineRequestId, 'outline.blocks.generating', blocksResult);
+
+      // Now do the blocks_generated work BEFORE returning (can't trust final state invokes)
+      logger.info(`[Outline ${input.outlineRequestId}] Blocks generated, updating status...`);
+
+      // Update blocks generated status
+      await input.outlineRepo.updateStatus(input.outlineRequestId, 'outline.blocks.generated', undefined);
+
+      // Set num_lessons for tracking
+      const numLessons = blocksResult.lessons.length;
+      await input.outlineRepo.updateNumLessons(input.outlineRequestId, numLessons);
+
+      logger.info(`[Outline ${input.outlineRequestId}] Blocks generated, spawning ${numLessons} lesson machines...`);
+
+      // Fire-and-forget: Spawn parallel lesson machines without blocking
+      const lessonRepo = new LessonRepository();
+
+      Promise.all(
+        blocksResult.lessons.map(async (lesson) => {
+          try {
+            // Create lesson record in database
+            const lessonRecord = await lessonRepo.create(input.outlineRequestId, lesson.title, { tsxCode: '' });
+
+            logger.info(
+              `[Outline ${input.outlineRequestId}] Created lesson record ${lessonRecord.id} for "${lesson.title}"`,
+            );
+
+            // Create and start lesson actor machine
+            const lessonActor = createActor(lessonActorMachine, {
+              input: {
+                lessonId: lessonRecord.id,
+                outlineRequestId: input.outlineRequestId,
+                lesson,
+                context: {
+                  topic: blocksResult.metadata.topic,
+                  domains: blocksResult.metadata.domains,
+                  ageRange: blocksResult.metadata.ageRange,
+                  complexity: blocksResult.metadata.complexity,
+                },
+                llmClient: input.llmClient,
+                lessonRepo,
+                maxValidationAttempts: 3,
+              },
+            });
+
+            // Register actor to prevent garbage collection
+            registerActor(lessonRecord.id, lessonActor, 'lesson');
+
+            // Subscribe for logging
+            lessonActor.subscribe({
+              complete: () => logger.info(`[Lesson ${lessonRecord.id}] Machine completed`),
+              error: (error) => logger.error(`[Lesson ${lessonRecord.id}] Machine failed:`, error),
+            });
+
+            // Start the machine (non-blocking)
+            lessonActor.start();
+
+            logger.info(`[Lesson ${lessonRecord.id}] Machine started for "${lesson.title}"`);
+          } catch (error) {
+            logger.error(
+              `[Outline ${input.outlineRequestId}] Failed to spawn lesson machine for "${lesson.title}":`,
+              error,
+            );
+          }
+        }),
+      ).catch((error) => {
+        logger.error(`[Outline ${input.outlineRequestId}] Error spawning lesson machines:`, error);
+      });
+
+      logger.info(`[Outline ${input.outlineRequestId}] Lesson machine spawning initiated (non-blocking)`);
 
       return blocksResult;
     }),
@@ -231,75 +303,6 @@ export const outlineRequestActorMachine = setup({
 
     blocks_generated: {
       type: 'final',
-      invoke: {
-        src: fromPromise(async ({ input }: { input: OutlineRequestActorContext }) => {
-          // Update blocks generated status
-          await input.outlineRepo.updateStatus(input.outlineRequestId, 'outline.blocks.generated', undefined);
-
-          // Set num_lessons for tracking
-          const numLessons = input.blocksResult?.lessons.length || 0;
-          await input.outlineRepo.updateNumLessons(input.outlineRequestId, numLessons);
-
-          logger.info(
-            `[Outline ${input.outlineRequestId}] Blocks generated, spawning ${numLessons} lesson machines...`,
-          );
-
-          // Fire-and-forget: Spawn parallel lesson machines without blocking
-          const lessonRepo = new LessonRepository();
-
-          Promise.all(
-            input.blocksResult!.lessons.map(async (lesson) => {
-              try {
-                // Create lesson record in database
-                const lessonRecord = await lessonRepo.create(input.outlineRequestId, lesson.title, { tsxCode: '' });
-
-                logger.info(
-                  `[Outline ${input.outlineRequestId}] Created lesson record ${lessonRecord.id} for "${lesson.title}"`,
-                );
-
-                // Create and start lesson actor machine
-                const lessonActor = createActor(lessonActorMachine, {
-                  input: {
-                    lessonId: lessonRecord.id,
-                    outlineRequestId: input.outlineRequestId,
-                    lesson,
-                    context: {
-                      topic: input.blocksResult!.metadata.topic,
-                      domains: input.blocksResult!.metadata.domains,
-                      ageRange: input.blocksResult!.metadata.ageRange,
-                      complexity: input.blocksResult!.metadata.complexity,
-                    },
-                    llmClient: input.llmClient,
-                    lessonRepo,
-                    maxValidationAttempts: 3,
-                  },
-                });
-
-                // Subscribe for logging
-                lessonActor.subscribe({
-                  complete: () => logger.info(`[Lesson ${lessonRecord.id}] Machine completed`),
-                  error: (error) => logger.error(`[Lesson ${lessonRecord.id}] Machine failed:`, error),
-                });
-
-                // Start the machine (non-blocking)
-                lessonActor.start();
-
-                logger.info(`[Lesson ${lessonRecord.id}] Machine started for "${lesson.title}"`);
-              } catch (error) {
-                logger.error(
-                  `[Outline ${input.outlineRequestId}] Failed to spawn lesson machine for "${lesson.title}":`,
-                  error,
-                );
-              }
-            }),
-          ).catch((error) => {
-            logger.error(`[Outline ${input.outlineRequestId}] Error spawning lesson machines:`, error);
-          });
-
-          logger.info(`[Outline ${input.outlineRequestId}] Lesson machine spawning initiated (non-blocking)`);
-        }),
-        input: ({ context }) => context,
-      },
     },
 
     failed: {
