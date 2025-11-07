@@ -26,11 +26,31 @@ interface OutlineAccordionProps {
 }
 
 /**
- * Extended outline request type with status information
+ * Extended outline request type with derived status information
  */
 type OutlineRequestWithStatus = OutlineRequest & {
   status?: OutlineRequestStatus;
-  metadata?: Record<string, unknown> | null;
+};
+
+/**
+ * Derive current status from timestamp columns
+ * Returns the latest non-null status based on timestamp order
+ */
+const deriveStatusFromTimestamps = (outline: OutlineRequest): OutlineRequestStatus => {
+  const timestamps: Array<{ status: OutlineRequestStatus; timestamp: string | null }> = [
+    { status: 'failed', timestamp: outline.failed_at },
+    { status: 'error', timestamp: outline.error_at },
+    { status: 'outline.blocks.generated', timestamp: outline.outline_blocks_generated_at },
+    { status: 'outline.blocks.generating', timestamp: outline.outline_blocks_generating_at },
+    { status: 'outline.validated', timestamp: outline.outline_validated_at },
+    { status: 'outline.validating', timestamp: outline.outline_validating_at },
+    { status: 'submitted', timestamp: outline.submitted_at },
+  ];
+
+  // Find the most recent non-null timestamp
+  const latest = timestamps.find((t) => t.timestamp !== null);
+
+  return latest?.status || 'submitted';
 };
 
 export const OutlineAccordion = ({ defaultOpenId, onLessonClick }: OutlineAccordionProps) => {
@@ -39,7 +59,7 @@ export const OutlineAccordion = ({ defaultOpenId, onLessonClick }: OutlineAccord
   const [openItems, setOpenItems] = useState<string[]>([]);
 
   /**
-   * Fetch all outline requests with their latest status
+   * Fetch all outline requests and derive their status from timestamps
    */
   const fetchOutlineRequests = useCallback(async () => {
     const supabase = createClient();
@@ -60,27 +80,11 @@ export const OutlineAccordion = ({ defaultOpenId, onLessonClick }: OutlineAccord
       return;
     }
 
-    // Fetch latest status for each outline request
-    const outlineIds = outlines.map((outline) => outline.id);
-    const { data: statusData, error: statusError } = await supabase
-      .from('outline_request_status_record')
-      .select('outline_request_id, status, metadata')
-      .in('outline_request_id', outlineIds)
-      .order('created_at', { ascending: false });
-
-    if (statusError) {
-      console.error('Error fetching outline statuses:', statusError);
-    }
-
-    // Combine outline requests with their latest status
-    const outlinesWithStatus: OutlineRequestWithStatus[] = outlines.map((outline) => {
-      const latestStatus = statusData?.find((s) => s.outline_request_id === outline.id);
-      return {
-        ...outline,
-        status: latestStatus?.status,
-        metadata: latestStatus?.metadata as Record<string, unknown> | null,
-      };
-    });
+    // Derive status from timestamp columns
+    const outlinesWithStatus: OutlineRequestWithStatus[] = outlines.map((outline) => ({
+      ...outline,
+      status: deriveStatusFromTimestamps(outline),
+    }));
 
     setOutlineRequests(outlinesWithStatus);
   }, []);
@@ -94,7 +98,8 @@ export const OutlineAccordion = ({ defaultOpenId, onLessonClick }: OutlineAccord
 
     loadData();
 
-    // Set up Realtime subscription for new outline requests and status changes
+    // Set up Realtime subscription for outline request changes
+    // Status is tracked via timestamp columns on outline_request table
     const supabase = createClient();
 
     const outlineChannel = supabase
@@ -108,18 +113,6 @@ export const OutlineAccordion = ({ defaultOpenId, onLessonClick }: OutlineAccord
         },
         () => {
           console.log('Outline request changed, refetching...');
-          fetchOutlineRequests();
-        },
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'outline_request_status_record',
-        },
-        () => {
-          console.log('Outline request status changed, refetching...');
           fetchOutlineRequests();
         },
       )
@@ -141,7 +134,7 @@ export const OutlineAccordion = ({ defaultOpenId, onLessonClick }: OutlineAccord
 
   /**
    * Get status badge for outline request
-   * Reuses logic from LessonsTable component
+   * Outline statuses stop at blocks.generated (lesson generation happens separately)
    */
   const getOutlineStatusBadge = (status: string) => {
     const statusConfig: Record<
@@ -153,22 +146,13 @@ export const OutlineAccordion = ({ defaultOpenId, onLessonClick }: OutlineAccord
       'outline.validated': { label: 'Validated', variant: 'outline' },
       'outline.blocks.generating': { label: 'Generating Blocks', variant: 'secondary' },
       'outline.blocks.generated': { label: 'Blocks Generated', variant: 'default' },
-      'lessons.generating': { label: 'Generating Lessons', variant: 'secondary' },
-      'lessons.generated': { label: 'Lessons Generated', variant: 'outline' },
-      'lessons.validating': { label: 'Validating Lessons', variant: 'secondary' },
-      'lessons.validated': { label: 'Lessons Validated', variant: 'outline' },
-      'completed': { label: 'Completed', variant: 'default' },
       'error': { label: 'Error', variant: 'destructive' },
       'failed': { label: 'Failed', variant: 'destructive' },
     };
 
     const config = statusConfig[status] || { label: status, variant: 'outline' };
 
-    const isProcessing =
-      status === 'outline.validating' ||
-      status === 'outline.blocks.generating' ||
-      status === 'lessons.generating' ||
-      status === 'lessons.validating';
+    const isProcessing = status === 'outline.validating' || status === 'outline.blocks.generating';
 
     return (
       <Badge variant={config.variant} className="flex items-center gap-1 w-fit">

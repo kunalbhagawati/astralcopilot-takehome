@@ -11,35 +11,31 @@ import ts from 'typescript';
 import type { TSXValidationError } from '@/lib/types/validation.types';
 
 /**
- * Template for wrapping generated TSX code in a complete TypeScript file
+ * No template needed - validate full page as-is
  *
- * Provides necessary imports and context for type checking.
- * Only imports React namespace to avoid unused import errors.
- * With React 17+ JSX transform, explicit React import not needed for JSX,
- * but types are still needed for TypeScript validation.
+ * LLM now generates complete Next.js pages with 'use client' directive
+ * and all necessary imports. We validate exactly what will be written to disk.
  *
- * @param tsxCode - The TSX component code to validate
- * @returns Complete TypeScript file content
+ * @param tsxCode - The complete TSX page code to validate
+ * @returns The code unchanged (for backwards compatibility)
  */
 export const createValidationTemplate = (tsxCode: string): string => {
-  // Note: With jsx: "react-jsx", we don't need to import React for JSX
-  // But we may need it for types - let the code import what it needs
-  return `${tsxCode}
-`;
+  // No wrapping needed - validate the full page as-is
+  return tsxCode;
 };
 
 /**
  * Validate TSX code using TypeScript Compiler API
  *
- * Creates a virtual TypeScript program with the code wrapped in a template,
+ * Creates a virtual TypeScript program with the full page code,
  * runs type checking, and returns structured errors.
  *
- * @param tsxCode - The TSX code to validate
+ * @param tsxCode - The complete TSX page code to validate (with 'use client' and imports)
  * @returns Array of validation errors (empty if valid)
  */
 export const validateWithTypeScript = (tsxCode: string): TSXValidationError[] => {
-  // Wrap code in template with necessary imports
-  const fullCode = createValidationTemplate(tsxCode);
+  // Validate the full page code as-is (no wrapping needed)
+  const fullCode = tsxCode;
 
   // Create virtual source file
   const sourceFile = ts.createSourceFile(

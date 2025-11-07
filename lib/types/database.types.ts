@@ -31,94 +31,73 @@ export type Database = {
       lesson: {
         Row: {
           compiled_code: Json | null;
+          compiled_file_path: string | null;
           created_at: string | null;
+          error_at: string | null;
+          error_metadata: Json | null;
+          failed_at: string | null;
+          failed_metadata: Json | null;
           generated_code: Json;
+          generated_file_path: string | null;
           id: string;
+          lesson_compiled_at: string | null;
+          lesson_compiled_metadata: Json | null;
+          lesson_generated_at: string | null;
+          lesson_generated_metadata: Json | null;
+          lesson_validating_at: string | null;
+          lesson_validating_metadata: Json | null;
+          outline_request_id: string;
           title: string | null;
           updated_at: string | null;
+          validation_attempts: number | null;
         };
         Insert: {
           compiled_code?: Json | null;
+          compiled_file_path?: string | null;
           created_at?: string | null;
+          error_at?: string | null;
+          error_metadata?: Json | null;
+          failed_at?: string | null;
+          failed_metadata?: Json | null;
           generated_code: Json;
+          generated_file_path?: string | null;
           id?: string;
+          lesson_compiled_at?: string | null;
+          lesson_compiled_metadata?: Json | null;
+          lesson_generated_at?: string | null;
+          lesson_generated_metadata?: Json | null;
+          lesson_validating_at?: string | null;
+          lesson_validating_metadata?: Json | null;
+          outline_request_id: string;
           title?: string | null;
           updated_at?: string | null;
+          validation_attempts?: number | null;
         };
         Update: {
           compiled_code?: Json | null;
+          compiled_file_path?: string | null;
           created_at?: string | null;
+          error_at?: string | null;
+          error_metadata?: Json | null;
+          failed_at?: string | null;
+          failed_metadata?: Json | null;
           generated_code?: Json;
+          generated_file_path?: string | null;
           id?: string;
+          lesson_compiled_at?: string | null;
+          lesson_compiled_metadata?: Json | null;
+          lesson_generated_at?: string | null;
+          lesson_generated_metadata?: Json | null;
+          lesson_validating_at?: string | null;
+          lesson_validating_metadata?: Json | null;
+          outline_request_id?: string;
           title?: string | null;
           updated_at?: string | null;
-        };
-        Relationships: [];
-      };
-      lesson_status_record: {
-        Row: {
-          created_at: string | null;
-          id: string;
-          lesson_id: string;
-          metadata: Json | null;
-          status: Database['public']['Enums']['lesson_status'];
-          updated_at: string | null;
-        };
-        Insert: {
-          created_at?: string | null;
-          id?: string;
-          lesson_id: string;
-          metadata?: Json | null;
-          status?: Database['public']['Enums']['lesson_status'];
-          updated_at?: string | null;
-        };
-        Update: {
-          created_at?: string | null;
-          id?: string;
-          lesson_id?: string;
-          metadata?: Json | null;
-          status?: Database['public']['Enums']['lesson_status'];
-          updated_at?: string | null;
+          validation_attempts?: number | null;
         };
         Relationships: [
           {
-            foreignKeyName: 'lesson_status_record_lesson_id_fkey';
-            columns: ['lesson_id'];
-            isOneToOne: false;
-            referencedRelation: 'lesson';
-            referencedColumns: ['id'];
-          },
-        ];
-      };
-      mapping_outline_request_lesson: {
-        Row: {
-          created_at: string | null;
-          id: string;
-          lesson_id: string;
-          outline_request_id: string;
-        };
-        Insert: {
-          created_at?: string | null;
-          id?: string;
-          lesson_id: string;
-          outline_request_id: string;
-        };
-        Update: {
-          created_at?: string | null;
-          id?: string;
-          lesson_id?: string;
-          outline_request_id?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: 'mapping_outline_request_lesson_lesson_id_fkey';
-            columns: ['lesson_id'];
-            isOneToOne: false;
-            referencedRelation: 'lesson';
-            referencedColumns: ['id'];
-          },
-          {
-            foreignKeyName: 'mapping_outline_request_lesson_outline_request_id_fkey';
+            foreignKeyName: 'lesson_outline_request_id_fkey';
             columns: ['outline_request_id'];
             isOneToOne: false;
             referencedRelation: 'outline_request';
@@ -130,63 +109,70 @@ export type Database = {
         Row: {
           content_blocks: Json | null;
           created_at: string | null;
+          error_at: string | null;
+          error_metadata: Json | null;
+          failed_at: string | null;
+          failed_metadata: Json | null;
           id: string;
+          num_lessons: number | null;
           outline: string;
+          outline_blocks_generated_at: string | null;
+          outline_blocks_generated_metadata: Json | null;
+          outline_blocks_generating_at: string | null;
+          outline_blocks_generating_metadata: Json | null;
+          outline_validated_at: string | null;
+          outline_validated_metadata: Json | null;
+          outline_validating_at: string | null;
+          outline_validating_metadata: Json | null;
+          submitted_at: string | null;
           title: string | null;
           updated_at: string | null;
         };
         Insert: {
           content_blocks?: Json | null;
           created_at?: string | null;
+          error_at?: string | null;
+          error_metadata?: Json | null;
+          failed_at?: string | null;
+          failed_metadata?: Json | null;
           id?: string;
+          num_lessons?: number | null;
           outline: string;
+          outline_blocks_generated_at?: string | null;
+          outline_blocks_generated_metadata?: Json | null;
+          outline_blocks_generating_at?: string | null;
+          outline_blocks_generating_metadata?: Json | null;
+          outline_validated_at?: string | null;
+          outline_validated_metadata?: Json | null;
+          outline_validating_at?: string | null;
+          outline_validating_metadata?: Json | null;
+          submitted_at?: string | null;
           title?: string | null;
           updated_at?: string | null;
         };
         Update: {
           content_blocks?: Json | null;
           created_at?: string | null;
+          error_at?: string | null;
+          error_metadata?: Json | null;
+          failed_at?: string | null;
+          failed_metadata?: Json | null;
           id?: string;
+          num_lessons?: number | null;
           outline?: string;
+          outline_blocks_generated_at?: string | null;
+          outline_blocks_generated_metadata?: Json | null;
+          outline_blocks_generating_at?: string | null;
+          outline_blocks_generating_metadata?: Json | null;
+          outline_validated_at?: string | null;
+          outline_validated_metadata?: Json | null;
+          outline_validating_at?: string | null;
+          outline_validating_metadata?: Json | null;
+          submitted_at?: string | null;
           title?: string | null;
           updated_at?: string | null;
         };
         Relationships: [];
-      };
-      outline_request_status_record: {
-        Row: {
-          created_at: string | null;
-          id: string;
-          metadata: Json | null;
-          outline_request_id: string;
-          status: Database['public']['Enums']['outline_request_status'];
-          updated_at: string | null;
-        };
-        Insert: {
-          created_at?: string | null;
-          id?: string;
-          metadata?: Json | null;
-          outline_request_id: string;
-          status?: Database['public']['Enums']['outline_request_status'];
-          updated_at?: string | null;
-        };
-        Update: {
-          created_at?: string | null;
-          id?: string;
-          metadata?: Json | null;
-          outline_request_id?: string;
-          status?: Database['public']['Enums']['outline_request_status'];
-          updated_at?: string | null;
-        };
-        Relationships: [
-          {
-            foreignKeyName: 'outline_request_status_record_outline_request_id_fkey';
-            columns: ['outline_request_id'];
-            isOneToOne: false;
-            referencedRelation: 'outline_request';
-            referencedColumns: ['id'];
-          },
-        ];
       };
     };
     Views: {
@@ -196,27 +182,7 @@ export type Database = {
       [_ in never]: never;
     };
     Enums: {
-      lesson_status:
-        | 'lesson.generating'
-        | 'lesson.generated'
-        | 'lesson.validating'
-        | 'lesson.compiling'
-        | 'error'
-        | 'completed'
-        | 'failed';
-      outline_request_status:
-        | 'submitted'
-        | 'outline.validating'
-        | 'outline.validated'
-        | 'outline.blocks.generating'
-        | 'outline.blocks.generated'
-        | 'lessons.generating'
-        | 'lessons.generated'
-        | 'lessons.validating'
-        | 'lessons.validated'
-        | 'completed'
-        | 'error'
-        | 'failed';
+      [_ in never]: never;
     };
     CompositeTypes: {
       [_ in never]: never;
@@ -338,30 +304,6 @@ export const Constants = {
     Enums: {},
   },
   public: {
-    Enums: {
-      lesson_status: [
-        'lesson.generating',
-        'lesson.generated',
-        'lesson.validating',
-        'lesson.compiling',
-        'error',
-        'completed',
-        'failed',
-      ],
-      outline_request_status: [
-        'submitted',
-        'outline.validating',
-        'outline.validated',
-        'outline.blocks.generating',
-        'outline.blocks.generated',
-        'lessons.generating',
-        'lessons.generated',
-        'lessons.validating',
-        'lessons.validated',
-        'completed',
-        'error',
-        'failed',
-      ],
-    },
+    Enums: {},
   },
 } as const;

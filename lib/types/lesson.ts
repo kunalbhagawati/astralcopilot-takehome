@@ -1,13 +1,22 @@
 // Re-export database types as type aliases
 // Source of truth: lib/types/database.types.ts (auto-generated from Supabase)
-import type { Database, Tables } from './database.types';
+import type { Tables } from './database.types';
 
-// Enum type aliases for convenience
-export type OutlineRequestStatus = Database['public']['Enums']['outline_request_status'];
-export type LessonStatus = Database['public']['Enums']['lesson_status'];
+// Status type definitions
+// These are TypeScript unions that match the timestamp columns used for status tracking
+// Status is derived from which timestamp columns are non-null, not stored as enum values
+export type OutlineRequestStatus =
+  | 'submitted'
+  | 'outline.validating'
+  | 'outline.validated'
+  | 'outline.blocks.generating'
+  | 'outline.blocks.generated'
+  | 'error'
+  | 'failed';
+
+export type LessonStatus = 'lesson.generated' | 'lesson.validating' | 'lesson.compiled' | 'error' | 'failed';
 
 // Database table type aliases
 // These are direct aliases to ensure type safety and match database schema exactly
 export type OutlineRequest = Tables<'outline_request'>;
 export type Lesson = Tables<'lesson'>;
-export type MappingOutlineRequestLesson = Tables<'mapping_outline_request_lesson'>;
