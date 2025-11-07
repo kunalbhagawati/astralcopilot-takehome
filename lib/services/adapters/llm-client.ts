@@ -35,11 +35,6 @@ import type {
   SingleLessonTSXInput,
   SingleLessonTSXResult,
 } from '../../types/tsx-generation.types';
-import {
-  TSXGenerationResultSchema,
-  TSXRegenerationResultSchema,
-  SingleLessonTSXResultSchema,
-} from '../../types/tsx-generation.types';
 import type { EnhancedValidationResult } from '../../types/validation.types';
 import { EnhancedValidationResultSchema } from '../../types/validation.types';
 import { transformLLMError } from '../utils/llm-error-transformer';
@@ -184,7 +179,6 @@ export class LLMClient {
         model,
         systemPrompt: TSX_GENERATION_SYSTEM_PROMPT,
         buildUserPrompt: buildTSXGenerationUserPrompt,
-        schema: TSXGenerationResultSchema,
         temperature: 0.4, // Lower temperature for code generation
       });
     } catch (error) {
@@ -224,7 +218,6 @@ export class LLMClient {
         model,
         systemPrompt: TSX_REGENERATION_SYSTEM_PROMPT,
         buildUserPrompt: buildTSXRegenerationUserPrompt,
-        schema: TSXRegenerationResultSchema,
         temperature: 0.3, // Even lower temperature for error fixing (more deterministic)
       });
     } catch (error) {
@@ -257,7 +250,6 @@ export class LLMClient {
         model,
         systemPrompt: TSX_GENERATION_SYSTEM_PROMPT,
         buildUserPrompt: buildSingleLessonTSXPrompt,
-        schema: SingleLessonTSXResultSchema,
         temperature: 0.4, // Lower temperature for code generation
       });
     } catch (error) {

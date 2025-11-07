@@ -10,15 +10,15 @@
  * Converts markdown teaching blocks into production-ready TSX components.
  */
 
-import { generateObject } from 'ai';
+import { generateText } from 'ai';
 import type { LanguageModel } from 'ai';
-import type { z } from 'zod';
 import type {
   TSXGenerationInput,
   TSXGenerationResult,
   SingleLessonTSXInput,
   SingleLessonTSXResult,
 } from '../../types/tsx-generation.types';
+import { stripMarkdownFences } from '../../utils/strip-markdown-fences';
 
 /**
  * Configuration for TSX generation
@@ -30,8 +30,6 @@ export interface TSXGenerationConfig {
   systemPrompt: string;
   /** Function to build user prompt from input */
   buildUserPrompt: (input: TSXGenerationInput) => string;
-  /** Zod schema for validation */
-  schema: z.ZodType<TSXGenerationResult>;
   /** Temperature for generation (0.0-1.0) */
   temperature?: number;
 }
@@ -93,15 +91,26 @@ export const generateTSX = async (
   input: TSXGenerationInput,
   config: TSXGenerationConfig,
 ): Promise<TSXGenerationResult> => {
-  const result = await generateObject({
+  const result = await generateText({
     model: config.model,
-    schema: config.schema,
     system: config.systemPrompt,
     prompt: config.buildUserPrompt(input),
     temperature: config.temperature ?? 0.4, // Lower temp for code generation (more deterministic)
   });
 
-  return result.object;
+  // Return raw TSX code wrapped in result format
+  // The result.text contains the complete TSX file content
+  return {
+    lessons: input.blocksResult.lessons.map((lesson) => ({
+      title: lesson.title,
+      tsxCode: result.text, // Raw TSX code from LLM
+    })),
+    metadata: {
+      lessonCount: input.blocksResult.lessons.length,
+      model: typeof config.model === 'string' ? config.model : 'unknown',
+      generatedAt: new Date().toISOString(),
+    },
+  };
 };
 
 /**
@@ -114,8 +123,6 @@ export interface SingleLessonTSXConfig {
   systemPrompt: string;
   /** Function to build user prompt from input */
   buildUserPrompt: (input: SingleLessonTSXInput) => string;
-  /** Zod schema for validation */
-  schema: z.ZodType<SingleLessonTSXResult>;
   /** Temperature for generation (0.0-1.0) */
   temperature?: number;
 }
@@ -167,13 +174,17 @@ export const generateSingleLessonTSX = async (
   input: SingleLessonTSXInput,
   config: SingleLessonTSXConfig,
 ): Promise<SingleLessonTSXResult> => {
-  const result = await generateObject({
+  const result = await generateText({
     model: config.model,
-    schema: config.schema,
     system: config.systemPrompt,
     prompt: config.buildUserPrompt(input),
     temperature: config.temperature ?? 0.4, // Lower temp for code generation (more deterministic)
   });
 
-  return result.object;
+  // Return raw TSX code in result format
+  // Strip markdown fences if LLM ignored instructions and wrapped code
+  // The result.text contains the complete TSX file content
+  return {
+    tsxCode: stripMarkdownFences(result.text), // Raw TSX code from LLM, cleaned
+  };
 };

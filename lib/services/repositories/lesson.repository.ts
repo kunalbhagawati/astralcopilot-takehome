@@ -20,7 +20,7 @@ export class LessonRepository {
    * File paths and compiled code are added after file writing.
    * Status tracking is done via updateStatus() method.
    */
-  async create(outlineRequestId: string, title: string, generatedCode: { tsxCode: string }): Promise<Lesson> {
+  async create(outlineRequestId: string, title: string, generatedCode: string): Promise<Lesson> {
     const supabase = await createClient();
 
     const { data, error } = await supabase
@@ -28,7 +28,7 @@ export class LessonRepository {
       .insert({
         outline_request_id: outlineRequestId,
         title,
-        generated_code: generatedCode, // JSONB column with { tsxCode }
+        generated_code: generatedCode, // Plain text TSX code
       })
       .select()
       .single();
@@ -99,13 +99,13 @@ export class LessonRepository {
    *
    * Called after TSX validation and compilation succeed.
    */
-  async updateCompiledCode(lessonId: string, compiledCode: { javascript: string }): Promise<void> {
+  async updateCompiledCode(lessonId: string, compiledCode: string): Promise<void> {
     const supabase = await createClient();
 
     const { error } = await supabase
       .from('lesson')
       .update({
-        compiled_code: compiledCode, // JSONB column
+        compiled_code: compiledCode, // Plain text JavaScript code
       })
       .eq('id', lessonId);
 
@@ -150,7 +150,7 @@ export class LessonRepository {
   async updateCompiledCodeAndPaths(
     lessonId: string,
     update: {
-      compiledCode: { javascript: string };
+      compiledCode: string;
       filePaths: { generatedFilePath: string; compiledFilePath: string };
     },
   ): Promise<void> {
@@ -159,7 +159,7 @@ export class LessonRepository {
     const { error } = await supabase
       .from('lesson')
       .update({
-        compiled_code: update.compiledCode,
+        compiled_code: update.compiledCode, // Plain text JavaScript code
         generated_file_path: update.filePaths.generatedFilePath,
         compiled_file_path: update.filePaths.compiledFilePath,
       })
@@ -177,13 +177,13 @@ export class LessonRepository {
    * Called when LLM regenerates TSX code based on validation errors.
    * Updates the generated_code column with new TSX before next validation attempt.
    */
-  async updateGeneratedCode(lessonId: string, generatedCode: { tsxCode: string }): Promise<void> {
+  async updateGeneratedCode(lessonId: string, generatedCode: string): Promise<void> {
     const supabase = await createClient();
 
     const { error } = await supabase
       .from('lesson')
       .update({
-        generated_code: generatedCode, // JSONB column with { tsxCode }
+        generated_code: generatedCode, // Plain text TSX code
       })
       .eq('id', lessonId);
 

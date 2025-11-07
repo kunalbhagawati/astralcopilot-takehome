@@ -30,10 +30,6 @@ export interface LessonTSX {
   title: string;
   /** Generated TSX code as a string (full Next.js page with default export) */
   tsxCode: string;
-  /** Original blocks (for reference/debugging) */
-  originalBlocks: Array<{ type: string; content?: string; prompt?: string }>;
-  /** Imports used in this lesson's TSX code (for Phase 2 module loading) */
-  imports?: string[];
 }
 
 /**
@@ -55,29 +51,21 @@ export interface TSXGenerationResult {
 }
 
 /**
- * Zod schema for LessonTSX validation
+ * Zod schema for LessonTSX validation (not used with raw TSX output)
+ * Kept for backward compatibility
  */
 export const LessonTSXSchema = z.object({
   title: z.string().min(3, 'Lesson title must be at least 3 characters'),
   tsxCode: z
     .string()
     .min(50, 'TSX code must be at least 50 characters')
-    .refine((code) => code.includes('export default'), 'TSX code must include default export')
-    .refine((code) => code.includes('function LessonPage'), 'TSX code must export LessonPage function'),
-  originalBlocks: z
-    .array(
-      z.object({
-        type: z.string(),
-        content: z.string().optional(),
-        prompt: z.string().optional(),
-      }),
-    )
-    .min(1, 'Must have at least one original block'),
-  imports: z.array(z.string()).optional(),
+    .refine((code) => code.includes('export const'), 'TSX code must include named export')
+    .refine((code) => code.includes('LessonComponent'), 'TSX code must export LessonComponent'),
 });
 
 /**
- * Zod schema for TSXGenerationResult validation
+ * Zod schema for TSXGenerationResult validation (not used with raw TSX output)
+ * Kept for backward compatibility
  */
 export const TSXGenerationResultSchema = z.object({
   lessons: z.array(LessonTSXSchema).min(1, 'Must have at least one lesson'),
@@ -97,7 +85,7 @@ export const TSXGenerationResultSchema = z.object({
 export interface TSXRegenerationInput {
   /** Original TSX code that failed validation */
   originalCode: string;
-  /** Validation errors from TypeScript, ESLint, or import validation */
+  /** Validation errors from TypeScript or import validation */
   validationErrors: TSXValidationError[];
   /** Lesson title for context */
   lessonTitle: string;
@@ -110,28 +98,23 @@ export interface TSXRegenerationInput {
 /**
  * Result of TSX regeneration
  *
- * Contains fixed TSX code and list of fixes applied.
+ * Contains fixed TSX code as raw text.
  */
 export interface TSXRegenerationResult {
   /** Fixed TSX code as a string (full Next.js page) */
   tsxCode: string;
-  /** Brief descriptions of fixes applied */
-  fixedErrors: string[];
-  /** Attempt number (should match input) */
-  attemptNumber: number;
 }
 
 /**
- * Zod schema for TSXRegenerationResult validation
+ * Zod schema for TSXRegenerationResult validation (not used with raw TSX output)
+ * Kept for backward compatibility
  */
 export const TSXRegenerationResultSchema = z.object({
   tsxCode: z
     .string()
     .min(50, 'TSX code must be at least 50 characters')
-    .refine((code) => code.includes('export default'), 'TSX code must include default export')
-    .refine((code) => code.includes('function LessonPage'), 'TSX code must export LessonPage function'),
-  fixedErrors: z.array(z.string()), // Allow empty array to prevent schema validation failures
-  attemptNumber: z.number().int().positive('Attempt number must be positive'),
+    .refine((code) => code.includes('export const'), 'TSX code must include named export')
+    .refine((code) => code.includes('LessonComponent'), 'TSX code must export LessonComponent'),
 });
 
 /**
@@ -157,38 +140,22 @@ export interface SingleLessonTSXInput {
 /**
  * Result of single-lesson TSX generation
  *
- * Contains TSX code for one lesson.
+ * Contains raw TSX code for one lesson.
  * Always uses default export: export default function LessonPage()
  */
 export interface SingleLessonTSXResult {
-  /** Lesson title */
-  title: string;
   /** Generated TSX code as a string (full Next.js page with default export) */
   tsxCode: string;
-  /** Original blocks for reference */
-  originalBlocks: Array<{ type: string; content?: string; prompt?: string }>;
-  /** Imports used in this lesson's TSX code */
-  imports?: string[];
 }
 
 /**
- * Zod schema for SingleLessonTSXResult validation
+ * Zod schema for SingleLessonTSXResult validation (not used with raw TSX output)
+ * Kept for backward compatibility
  */
 export const SingleLessonTSXResultSchema = z.object({
-  title: z.string().min(3, 'Lesson title must be at least 3 characters'),
   tsxCode: z
     .string()
     .min(50, 'TSX code must be at least 50 characters')
-    .refine((code) => code.includes('export default'), 'TSX code must include default export')
-    .refine((code) => code.includes('function LessonPage'), 'TSX code must export LessonPage function'),
-  originalBlocks: z
-    .array(
-      z.object({
-        type: z.string(),
-        content: z.string().optional(),
-        prompt: z.string().optional(),
-      }),
-    )
-    .min(1, 'Must have at least one original block'),
-  imports: z.array(z.string()).optional(),
+    .refine((code) => code.includes('export const'), 'TSX code must include named export')
+    .refine((code) => code.includes('LessonComponent'), 'TSX code must export LessonComponent'),
 });

@@ -65,10 +65,10 @@ export const compileTSX = (tsxCode: string): string => {
  *
  * Creates directory structure: ./tmp/generated/{lessonId}/
  * Writes two files:
- * - page.tsx (original TypeScript source)
+ * - page.tsx (component source - internal naming convention)
  * - page.js (compiled JavaScript)
  *
- * @param tsxCode - The TSX page code to compile
+ * @param tsxCode - The TSX component code to compile
  * @param lessonId - The lesson ID (used for directory name)
  * @returns Object with paths to both files
  * @throws Error if compilation or file writing fails

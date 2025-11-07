@@ -11,10 +11,10 @@
  * Used in validation retry loops to fix LLM-generated code.
  */
 
-import { generateObject } from 'ai';
+import { generateText } from 'ai';
 import type { LanguageModel } from 'ai';
-import type { z } from 'zod';
 import type { TSXRegenerationInput, TSXRegenerationResult } from '../../types/tsx-generation.types';
+import { stripMarkdownFences } from '../../utils/strip-markdown-fences';
 
 /**
  * Configuration for TSX regeneration
@@ -26,8 +26,6 @@ export interface TSXRegenerationConfig {
   systemPrompt: string;
   /** Function to build user prompt from input */
   buildUserPrompt: (input: TSXRegenerationInput) => string;
-  /** Zod schema for validation */
-  schema: z.ZodType<TSXRegenerationResult>;
   /** Temperature for generation (0.0-1.0) */
   temperature?: number;
 }
@@ -41,7 +39,7 @@ export interface TSXRegenerationConfig {
  *
  * This is called during validation retry loops when TSX fails validation:
  * 1. TSX generation produces code
- * 2. Validation detects errors (TypeScript, ESLint, imports)
+ * 2. Validation detects errors (TypeScript compilation, imports)
  * 3. TSX regeneration (this function) fixes errors
  * 4. Validation re-runs on fixed code
  *
@@ -80,13 +78,17 @@ export const regenerateTSX = async (
   input: TSXRegenerationInput,
   config: TSXRegenerationConfig,
 ): Promise<TSXRegenerationResult> => {
-  const result = await generateObject({
+  const result = await generateText({
     model: config.model,
-    schema: config.schema,
     system: config.systemPrompt,
     prompt: config.buildUserPrompt(input),
     temperature: config.temperature ?? 0.3, // Lower temp for error fixing (deterministic)
   });
 
-  return result.object;
+  // Return raw TSX code in result format
+  // Strip markdown fences if LLM ignored instructions and wrapped code
+  // The result.text contains the fixed TSX file content
+  return {
+    tsxCode: stripMarkdownFences(result.text), // Raw fixed TSX code from LLM, cleaned
+  };
 };

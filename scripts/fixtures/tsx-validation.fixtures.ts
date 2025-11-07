@@ -16,9 +16,9 @@ export const TSX_VALIDATION_FIXTURES = {
   /**
    * Valid TSX component - should pass both TypeScript and ESLint
    */
-  validComponent: `export const PhotosynthesisLesson = () => {
+  validComponent: `export const LessonComponent = () => {
   return (
-    <main className="min-h-screen bg-gradient-to-b from-green-50 to-blue-50 py-12 px-4">
+    <div className="bg-gradient-to-b from-green-50 to-blue-50 py-12 px-4">
       <div className="max-w-4xl mx-auto">
         <header className="mb-8 text-center">
           <h1 className="text-4xl font-bold text-green-800 mb-2">
@@ -39,20 +39,20 @@ export const TSX_VALIDATION_FIXTURES = {
           </article>
         </section>
       </div>
-    </main>
+    </div>
   );
 };`,
 
   /**
    * Type error - undefined variable
    */
-  typeError: `export const BrokenLesson = () => {
+  typeError: `export const LessonComponent = () => {
   const title = undefined;
 
   return (
-    <main className="p-4">
+    <div className="p-4">
       <h1>{title.toUpperCase()}</h1>
-    </main>
+    </div>
   );
 };`,
 
@@ -61,33 +61,33 @@ export const TSX_VALIDATION_FIXTURES = {
    */
   noExport: `const LessonComponent = () => {
   return (
-    <main className="p-4">
+    <div className="p-4">
       <h1>Missing Export</h1>
-    </main>
+    </div>
   );
 };`,
 
   /**
    * Invalid JSX syntax - unclosed tag
    */
-  syntaxError: `export const InvalidJSX = () => {
+  syntaxError: `export const LessonComponent = () => {
   return (
-    <main className="p-4">
+    <div className="p-4">
       <h1>Unclosed heading
-    </main>
+    </div>
   );
 };`,
 
   /**
    * Wrong React element type
    */
-  typeErrorJSX: `export const WrongType = () => {
+  typeErrorJSX: `export const LessonComponent = () => {
   const element: string = <div>Hello</div>;
 
   return (
-    <main className="p-4">
+    <div className="p-4">
       {element}
-    </main>
+    </div>
   );
 };`,
 
@@ -99,29 +99,29 @@ export const TSX_VALIDATION_FIXTURES = {
   count: number;
 }
 
-export const PropErrorLesson = ({ title, count }: Props) => {
+export const LessonComponent = ({ title, count }: Props) => {
   const badTitle: number = title; // Type error
   const badCount: string = count; // Type error
 
   return (
-    <main className="p-4">
+    <div className="p-4">
       <h1>{badTitle}</h1>
       <p>{badCount}</p>
-    </main>
+    </div>
   );
 };`,
 
   /**
    * Component with unused variables (ESLint warning, not error)
    */
-  unusedVars: `export const UnusedVarsLesson = () => {
+  unusedVars: `export const LessonComponent = () => {
   const unused = 'This variable is never used';
   const alsoUnused = 42;
 
   return (
-    <main className="p-4">
+    <div className="p-4">
       <h1>Hello World</h1>
-    </main>
+    </div>
   );
 };`,
 
@@ -131,9 +131,9 @@ export const PropErrorLesson = ({ title, count }: Props) => {
   validComponentWithImports: `import { CheckCircle, XCircle } from 'lucide-react';
 import { clsx } from 'clsx';
 
-export const InteractiveLesson = () => {
+export const LessonComponent = () => {
   return (
-    <main className="p-4 space-y-4">
+    <div className="p-4 space-y-4">
       <div className="flex items-center space-x-2">
         <CheckCircle className={clsx('w-6 h-6', 'text-green-500')} />
         <span>Interactive lesson with allowed imports</span>
@@ -142,7 +142,7 @@ export const InteractiveLesson = () => {
         <XCircle className="w-6 h-6 text-gray-400" />
         <p className="text-gray-700">Using lucide-react icons and clsx utility</p>
       </div>
-    </main>
+    </div>
   );
 };`,
 
@@ -151,12 +151,12 @@ export const InteractiveLesson = () => {
    */
   blockedImportNavigation: `import Link from 'next/link';
 
-export const NavigationLesson = () => {
+export const LessonComponent = () => {
   return (
-    <main className="p-4">
+    <div className="p-4">
       <h1>Lesson Content</h1>
       <Link href="/somewhere">Go to next lesson</Link>
-    </main>
+    </div>
   );
 };`,
 
@@ -165,13 +165,13 @@ export const NavigationLesson = () => {
    */
   blockedImportDatabase: `import { createClient } from '@supabase/supabase-js';
 
-export const DatabaseLesson = () => {
+export const LessonComponent = () => {
   const supabase = createClient('url', 'key');
 
   return (
-    <main className="p-4">
+    <div className="p-4">
       <h1>Accessing Database (not allowed)</h1>
-    </main>
+    </div>
   );
 };`,
 

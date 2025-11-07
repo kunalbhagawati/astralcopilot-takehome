@@ -11,30 +11,30 @@ import ts from 'typescript';
 import type { TSXValidationError } from '@/lib/types/validation.types';
 
 /**
- * No template needed - validate full page as-is
+ * No template needed - validate component as-is
  *
- * LLM now generates complete Next.js pages with 'use client' directive
- * and all necessary imports. We validate exactly what will be written to disk.
+ * LLM generates self-contained React components with all necessary imports.
+ * We validate exactly what will be compiled and stored.
  *
- * @param tsxCode - The complete TSX page code to validate
+ * @param tsxCode - The complete TSX component code to validate
  * @returns The code unchanged (for backwards compatibility)
  */
 export const createValidationTemplate = (tsxCode: string): string => {
-  // No wrapping needed - validate the full page as-is
+  // No wrapping needed - validate the component code as-is
   return tsxCode;
 };
 
 /**
  * Validate TSX code using TypeScript Compiler API
  *
- * Creates a virtual TypeScript program with the full page code,
+ * Creates a virtual TypeScript program with the component code,
  * runs type checking, and returns structured errors.
  *
- * @param tsxCode - The complete TSX page code to validate (with 'use client' and imports)
+ * @param tsxCode - The complete TSX component code to validate (with imports)
  * @returns Array of validation errors (empty if valid)
  */
 export const validateWithTypeScript = (tsxCode: string): TSXValidationError[] => {
-  // Validate the full page code as-is (no wrapping needed)
+  // Validate the component code as-is (no wrapping needed)
   const fullCode = tsxCode;
 
   // Create virtual source file

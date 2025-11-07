@@ -154,7 +154,7 @@ export const outlineRequestActorMachine = setup({
         blocksResult.lessons.map(async (lesson) => {
           try {
             // Create lesson record in database
-            const lessonRecord = await lessonRepo.create(input.outlineRequestId, lesson.title, { tsxCode: '' });
+            const lessonRecord = await lessonRepo.create(input.outlineRequestId, lesson.title, '');
 
             logger.info(
               `[Outline ${input.outlineRequestId}] Created lesson record ${lessonRecord.id} for "${lesson.title}"`,

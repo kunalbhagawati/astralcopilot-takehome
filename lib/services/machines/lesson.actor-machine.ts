@@ -44,8 +44,8 @@ interface LessonActorContext {
   maxValidationAttempts: number;
 
   // Results from each stage
-  generatedCode?: { tsxCode: string };
-  compiledCode?: { javascript: string };
+  generatedCode?: string;
+  compiledCode?: string;
   filePaths?: { generatedFilePath: string; compiledFilePath: string };
 
   // Validation tracking
@@ -114,7 +114,7 @@ export const lessonActorMachine = setup({
       });
 
       // Store generated code in database
-      await input.lessonRepo.updateGeneratedCode(input.lessonId, { tsxCode: result.tsxCode });
+      await input.lessonRepo.updateGeneratedCode(input.lessonId, result.tsxCode);
 
       logger.info(`[Lesson ${input.lessonId}] TSX code generated successfully`);
 
@@ -124,7 +124,7 @@ export const lessonActorMachine = setup({
     /**
      * Stage 2: Validate and compile TSX code
      *
-     * Validates TSX using TypeScript, ESLint, and import checks.
+     * Validates TSX using TypeScript and import checks.
      * If validation passes:
      * - Compiles TSX to JavaScript
      * - Writes both TSX and JS files to disk
@@ -136,7 +136,7 @@ export const lessonActorMachine = setup({
      * - If attempts >= max, throws error to transition to 'failed' state
      */
     validateAndCompile: fromPromise<
-      { compiledCode: { javascript: string }; filePaths: { generatedFilePath: string; compiledFilePath: string } },
+      { compiledCode: string; filePaths: { generatedFilePath: string; compiledFilePath: string } },
       {
         tsxCode: string;
         lessonId: string;
@@ -178,17 +178,20 @@ export const lessonActorMachine = setup({
 
           // Update database with compiled code and file paths
           await lessonRepo.updateCompiledCodeAndPaths(lessonId, {
-            compiledCode: { javascript: compiledJS },
+            compiledCode: compiledJS,
             filePaths: {
               generatedFilePath: filePaths.tsxPath,
               compiledFilePath: filePaths.jsPath,
             },
           });
 
+          // Update status to compiled (must happen before entering final state)
+          await lessonRepo.updateStatus(lessonId, 'lesson.compiled', undefined);
+
           logger.info(`[Lesson ${lessonId}] TSX compiled and written successfully`);
 
           return {
-            compiledCode: { javascript: compiledJS },
+            compiledCode: compiledJS,
             filePaths: {
               generatedFilePath: filePaths.tsxPath,
               compiledFilePath: filePaths.jsPath,
@@ -228,7 +231,7 @@ export const lessonActorMachine = setup({
         currentCode = regenerationResult.tsxCode;
 
         // Update database with regenerated code
-        await lessonRepo.updateGeneratedCode(lessonId, { tsxCode: currentCode });
+        await lessonRepo.updateGeneratedCode(lessonId, currentCode);
 
         logger.info(`[Lesson ${lessonId}] TSX regenerated, retrying validation...`);
       }
@@ -255,7 +258,7 @@ export const lessonActorMachine = setup({
         onDone: {
           target: 'generated',
           actions: assign({
-            generatedCode: ({ event }) => event.output,
+            generatedCode: ({ event }) => event.output.tsxCode,
           }),
         },
         onError: {
@@ -287,7 +290,7 @@ export const lessonActorMachine = setup({
       invoke: {
         src: 'validateAndCompile',
         input: ({ context }) => ({
-          tsxCode: context.generatedCode!.tsxCode,
+          tsxCode: context.generatedCode!,
           lessonId: context.lessonId,
           lesson: context.lesson,
           context: context.context,
@@ -334,14 +337,7 @@ export const lessonActorMachine = setup({
 
     compiled: {
       type: 'final',
-      invoke: {
-        src: fromPromise(async ({ input }: { input: LessonActorContext }) => {
-          // Update compiled status
-          await input.lessonRepo.updateStatus(input.lessonId, 'lesson.compiled', undefined);
-          logger.info(`[Lesson ${input.lessonId}] Status updated to lesson.compiled - DONE`);
-        }),
-        input: ({ context }) => context,
-      },
+      // Status already updated in validateAndCompile actor before reaching this state
     },
 
     failed: {
