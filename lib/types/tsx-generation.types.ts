@@ -10,7 +10,8 @@
  */
 
 import { z } from 'zod';
-import type { ActionableBlocksResult } from './actionable-blocks.types';
+import type { ActionableBlocksResult, ActionableBlock } from './actionable-blocks.types';
+import type { TSXValidationError } from './validation.types';
 
 /**
  * Input for TSX generation
@@ -32,7 +33,9 @@ export interface LessonTSX {
   /** Component name extracted from export statement (e.g., "PhotosynthesisLesson") */
   componentName: string;
   /** Original blocks (for reference/debugging) */
-  originalBlocks: string[];
+  originalBlocks: Array<{ type: string; content?: string; prompt?: string }>;
+  /** Imports used in this lesson's TSX code (for Phase 2 module loading) */
+  imports?: string[];
 }
 
 /**
@@ -64,7 +67,16 @@ export const LessonTSXSchema = z.object({
     .refine((code) => code.includes('export'), 'TSX code must include an export statement')
     .refine((code) => code.includes('return') || code.includes('=>'), 'TSX code must be a valid React component'),
   componentName: z.string().min(3, 'Component name must be at least 3 characters'),
-  originalBlocks: z.array(z.string()).min(1, 'Must have at least one original block'),
+  originalBlocks: z
+    .array(
+      z.object({
+        type: z.string(),
+        content: z.string().optional(),
+        prompt: z.string().optional(),
+      }),
+    )
+    .min(1, 'Must have at least one original block'),
+  imports: z.array(z.string()).optional(),
 });
 
 /**
@@ -77,4 +89,116 @@ export const TSXGenerationResultSchema = z.object({
     model: z.string().min(1, 'Model name is required'),
     generatedAt: z.string().min(1, 'Generation timestamp is required'),
   }),
+});
+
+/**
+ * Input for TSX regeneration (fixing validation errors)
+ *
+ * Used when initial TSX generation fails validation.
+ * The LLM analyzes errors and generates fixed code.
+ */
+export interface TSXRegenerationInput {
+  /** Original TSX code that failed validation */
+  originalCode: string;
+  /** Component name */
+  componentName: string;
+  /** Validation errors from TypeScript, ESLint, or import validation */
+  validationErrors: TSXValidationError[];
+  /** Lesson title for context */
+  lessonTitle: string;
+  /** Original blocks to maintain content fidelity */
+  blocks: ActionableBlock[];
+  /** Current attempt number (for tracking retries) */
+  attemptNumber: number;
+}
+
+/**
+ * Result of TSX regeneration
+ *
+ * Contains fixed TSX code and list of fixes applied.
+ */
+export interface TSXRegenerationResult {
+  /** Fixed TSX code as a string */
+  tsxCode: string;
+  /** Component name (should match input) */
+  componentName: string;
+  /** Brief descriptions of fixes applied */
+  fixedErrors: string[];
+  /** Attempt number (should match input) */
+  attemptNumber: number;
+}
+
+/**
+ * Zod schema for TSXRegenerationResult validation
+ */
+export const TSXRegenerationResultSchema = z.object({
+  tsxCode: z
+    .string()
+    .min(50, 'TSX code must be at least 50 characters')
+    .refine((code) => code.includes('export'), 'TSX code must include an export statement')
+    .refine((code) => code.includes('return') || code.includes('=>'), 'TSX code must be a valid React component'),
+  componentName: z.string().min(3, 'Component name must be at least 3 characters'),
+  fixedErrors: z.array(z.string()), // Allow empty array to prevent schema validation failures
+  attemptNumber: z.number().int().positive('Attempt number must be positive'),
+});
+
+/**
+ * Input for single-lesson TSX generation
+ *
+ * Used to generate TSX for one lesson at a time (sequential generation).
+ * Enables better parallelization and error isolation compared to batch generation.
+ */
+export interface SingleLessonTSXInput {
+  /** Lesson title */
+  title: string;
+  /** Blocks for this lesson */
+  blocks: ActionableBlock[];
+  /** Context metadata (topic, age range, complexity, domains) */
+  context: {
+    topic: string;
+    ageRange: [number, number];
+    complexity: string;
+    domains: string[];
+  };
+}
+
+/**
+ * Result of single-lesson TSX generation
+ *
+ * Contains TSX code for one lesson.
+ */
+export interface SingleLessonTSXResult {
+  /** Lesson title */
+  title: string;
+  /** Generated TSX code as a string */
+  tsxCode: string;
+  /** Component name (should be "LessonComponent") */
+  componentName: string;
+  /** Original blocks for reference */
+  originalBlocks: Array<{ type: string; content?: string; prompt?: string }>;
+  /** Imports used in this lesson's TSX code */
+  imports?: string[];
+}
+
+/**
+ * Zod schema for SingleLessonTSXResult validation
+ */
+export const SingleLessonTSXResultSchema = z.object({
+  title: z.string().min(3, 'Lesson title must be at least 3 characters'),
+  tsxCode: z
+    .string()
+    .min(50, 'TSX code must be at least 50 characters')
+    .refine((code) => code.includes('export'), 'TSX code must include an export statement')
+    .refine((code) => code.includes('return') || code.includes('=>'), 'TSX code must be a valid React component'),
+  componentName: z.string().min(3, 'Component name must be at least 3 characters'),
+  originalBlocks: z
+    .array(
+      z.object({
+        type: z.string(),
+        content: z.string().optional(),
+        prompt: z.string().optional(),
+      }),
+    )
+    .min(1, 'Must have at least one original block'),
+  imports: z.array(z.string()).optional(),
 });

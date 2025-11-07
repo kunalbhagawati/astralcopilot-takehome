@@ -5,10 +5,11 @@
  * to render full React components with hooks, state, and interactivity.
  *
  * Approach: Uses new Function() to execute validated and compiled JavaScript
- * in a controlled scope with React context. This enables:
+ * in a controlled scope with React + module context. This enables:
  * - Full React hooks (useState, useEffect, etc.)
  * - Forms with state and event handlers
  * - Interactive components
+ * - Phase 2: Whitelisted library imports (lucide-react, radix-ui, etc.)
  *
  * Security: Code is pre-validated through eslint/TypeScript validation cycle
  * before compilation, ensuring only safe code reaches this renderer.
@@ -17,6 +18,13 @@
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { parseImports } from '@/lib/services/imports/import-parser';
+import {
+  hasImports,
+  stripImportsAndExports as simpleStrip,
+  transformImports,
+} from '@/lib/services/imports/import-transformer';
+import { buildModuleContext } from '@/lib/services/imports/module-context';
 import { AlertCircle } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
@@ -36,64 +44,72 @@ interface LessonTSXRendererProps {
 }
 
 /**
- * Strip import and export statements from JavaScript code
- *
- * Phase 1: Remove all imports and exports since we only provide React context.
- * Components should use HTML elements and Tailwind CSS only.
- *
- * Export statements must be removed because they are not valid inside
- * Function constructor scope (module-level syntax only).
- *
- * Phase 2 (future): Parse imports and provide module context.
- * See docs/dynamic-imports-strategy.md
- *
- * @param code - JavaScript code potentially containing imports and exports
- * @returns Code with imports and exports removed
- */
-const stripImportsAndExports = (code: string): string => {
-  // Remove ES6 import statements
-  let cleaned = code.replace(/import\s+.*?from\s+['"].*?['"];?\s*/g, '');
-
-  // Remove export keywords (export const, export default, export)
-  cleaned = cleaned.replace(/export\s+(default\s+)?/g, '');
-
-  return cleaned;
-};
-
-/**
  * Evaluate compiled JavaScript to get React component
  *
- * Uses Function constructor to execute code in controlled scope.
- * Only React is provided in context (Phase 1).
+ * Phase 2: Supports whitelisted library imports via module context.
+ * Falls back to Phase 1 (React-only) for code without imports.
  *
  * @param javascript - Compiled JavaScript code
  * @param componentName - Name of exported component
- * @returns React component constructor
+ * @returns Promise resolving to React component constructor
  * @throws Error if evaluation fails
  */
-const evaluateComponent = (javascript: string, componentName: string): React.ComponentType => {
+const evaluateComponent = async (javascript: string, componentName: string): Promise<React.ComponentType> => {
   try {
-    // Strip imports and exports (Phase 1: no external dependencies)
-    const cleanedCode = stripImportsAndExports(javascript);
+    // Check if code has imports (Phase 2) or not (Phase 1 backward compatibility)
+    if (hasImports(javascript)) {
+      // Phase 2: Parse, transform imports, and load modules
+      const imports = parseImports(javascript);
 
-    // Create function that returns the component
+      // Transform import statements to module access
+      const transformedCode = transformImports(javascript, imports);
 
-    const componentFactory = new Function(
-      'React',
-      `
-      ${cleanedCode}
-      return ${componentName};
-    `,
-    );
+      // Remove export keywords (not valid in Function scope)
+      const cleanedCode = transformedCode.replace(/export\s+(default\s+)?/g, '');
 
-    // Execute with React context
-    const Component = componentFactory(React);
+      // Build module context (loads all imported modules)
+      const modules = await buildModuleContext(imports);
 
-    if (typeof Component !== 'function') {
-      throw new Error(`${componentName} is not a valid React component`);
+      // Create function with React and __modules in scope
+      const componentFactory = new Function(
+        'React',
+        '__modules',
+        `
+        ${cleanedCode}
+        return ${componentName};
+      `,
+      );
+
+      // Execute with React and modules context
+      const Component = componentFactory(React, modules);
+
+      if (typeof Component !== 'function') {
+        throw new Error(`${componentName} is not a valid React component`);
+      }
+
+      return Component;
+    } else {
+      // Phase 1 backward compatibility: No imports, simple strip
+      const cleanedCode = simpleStrip(javascript);
+
+      // Create function with only React in scope
+      const componentFactory = new Function(
+        'React',
+        `
+        ${cleanedCode}
+        return ${componentName};
+      `,
+      );
+
+      // Execute with React context
+      const Component = componentFactory(React);
+
+      if (typeof Component !== 'function') {
+        throw new Error(`${componentName} is not a valid React component`);
+      }
+
+      return Component;
     }
-
-    return Component;
   } catch (error) {
     console.error('Component evaluation error:', error);
     throw error;
@@ -112,22 +128,37 @@ export const LessonTSXRenderer: React.FC<LessonTSXRendererProps> = ({ compiledCo
 
   // Evaluate component when compiledCode changes
   useEffect(() => {
-    setError(null);
-    setComponent(null);
+    let cancelled = false;
 
-    if (!compiledCode?.javascript) {
-      setError('No compiled code available');
-      return;
-    }
+    const loadComponent = async (): Promise<void> => {
+      setError(null);
+      setComponent(null);
 
-    try {
-      const EvaluatedComponent = evaluateComponent(compiledCode.javascript, compiledCode.componentName);
-      setComponent(() => EvaluatedComponent);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to evaluate component';
-      setError(errorMessage);
-      console.error('Component evaluation failed:', err);
-    }
+      if (!compiledCode?.javascript) {
+        setError('No compiled code available');
+        return;
+      }
+
+      try {
+        const EvaluatedComponent = await evaluateComponent(compiledCode.javascript, compiledCode.componentName);
+
+        if (!cancelled) {
+          setComponent(() => EvaluatedComponent);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          const errorMessage = err instanceof Error ? err.message : 'Failed to evaluate component';
+          setError(errorMessage);
+          console.error('Component evaluation failed:', err);
+        }
+      }
+    };
+
+    loadComponent();
+
+    return () => {
+      cancelled = true;
+    };
   }, [compiledCode]);
 
   // Show error state

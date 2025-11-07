@@ -4,38 +4,76 @@
  * Validates that LLM generates valid TSX code from blocks.
  * Does NOT validate code quality/style (LLM non-deterministic).
  *
+ * Tests both:
+ * - Batch generation (legacy, for testing)
+ * - Single-lesson generation (used by actor machine for sequential generation)
+ *
  * Run: bun run scripts/test-tsx-generation.ts
  * Run with verbose output: bun run scripts/test-tsx-generation.ts -v
+ * Run only single-lesson test: bun run scripts/test-tsx-generation.ts --single
  *
  * Note: Verbose mode shows full generated TSX (default shows truncated preview)
+ * Note: Actor machine uses sequential generation (1 prompt = 1 lesson = 1 table row)
  */
 
 import { createLLMClient } from '../lib/services/adapters/llm-client';
 import { logger } from '../lib/services/logger';
 import type { ActionableBlocksResult } from '../lib/types/actionable-blocks.types';
-import type { TSXGenerationInput, TSXGenerationResult } from '../lib/types/tsx-generation.types';
-import { TSXGenerationResultSchema } from '../lib/types/tsx-generation.types';
+import type { TSXGenerationInput, TSXGenerationResult, SingleLessonTSXInput } from '../lib/types/tsx-generation.types';
+import { TSXGenerationResultSchema, SingleLessonTSXResultSchema } from '../lib/types/tsx-generation.types';
 import { createOllamaHealthCheck } from '../lib/utils/ollama-health-check';
 
 /**
  * Sample blocks result for testing
- * Simulates output from blocks generation stage
+ * Simulates output from blocks generation stage with structured blocks
  */
 const SAMPLE_BLOCKS: ActionableBlocksResult = {
   lessons: [
     {
       title: 'Introduction to Photosynthesis',
       blocks: [
-        '**What is photosynthesis?** Plants make their own food using sunlight, like having a kitchen inside their leaves.',
-        '**Three ingredients plants need:** Sunlight from the sun, water from soil (through roots), and carbon dioxide (CO2) from the air we breathe out.',
-        "**Where it happens:** Inside tiny green parts called chloroplasts - they're like food factories in plant leaves.",
+        {
+          type: 'text',
+          content:
+            '**What is photosynthesis?** Plants make their own food using sunlight, like having a kitchen inside their leaves.',
+        },
+        {
+          type: 'image',
+          format: 'svg',
+          content:
+            'A simple diagram of a plant showing: sunlight rays from top pointing to leaves, water droplets with arrows from roots going up, CO2 molecules from air with arrows pointing to leaves, and O2 molecules with arrows leaving the leaves',
+          alt: 'Diagram showing photosynthesis inputs (sunlight, water, CO2) and output (oxygen)',
+          caption: 'How plants make food from light',
+        },
+        {
+          type: 'text',
+          content:
+            '**Three ingredients plants need:** Sunlight from the sun, water from soil (through roots), and carbon dioxide (CO2) from the air we breathe out.',
+        },
       ],
     },
     {
       title: 'The Process and Importance',
       blocks: [
-        '**The recipe:** Plants combine sunlight + water + CO2 to create sugar (their food) and release oxygen as a byproduct.',
-        "**Why it matters to us:** Plants feed themselves AND make oxygen for us to breathe. Without photosynthesis, we wouldn't have breathable air!",
+        {
+          type: 'text',
+          content:
+            '**The recipe:** Plants combine sunlight + water + CO2 to create sugar (their food) and release oxygen as a byproduct.',
+        },
+        {
+          type: 'interaction',
+          interactionType: 'quiz',
+          prompt: 'What do plants produce during photosynthesis?',
+          metadata: {
+            options: ['Sugar and oxygen', 'Only sugar', 'Only oxygen', 'Water and CO2'],
+            answer: 'Sugar and oxygen',
+          },
+        },
+        {
+          type: 'text',
+          content:
+            "**Why it matters to us:** Plants feed themselves AND make oxygen for us to breathe. Without photosynthesis, we wouldn't have breathable air!",
+        },
       ],
     },
   ],
@@ -45,7 +83,7 @@ const SAMPLE_BLOCKS: ActionableBlocksResult = {
     domains: ['science', 'biology', 'plants'],
     ageRange: [10, 11],
     complexity: 'moderate',
-    totalBlockCount: 5,
+    totalBlockCount: 6,
   },
 };
 
@@ -106,6 +144,29 @@ const validateTSXFormat = (result: TSXGenerationResult): { valid: boolean; error
 
     if (!lesson.originalBlocks || lesson.originalBlocks.length === 0) {
       errors.push(`Lesson ${idx + 1}: Missing originalBlocks`);
+    }
+
+    // Import validation (Phase 2)
+    if (lesson.imports && lesson.imports.length > 0) {
+      const allowedImports = [
+        'lucide-react',
+        '@radix-ui/react-checkbox',
+        '@radix-ui/react-accordion',
+        '@radix-ui/react-label',
+        'clsx',
+        'tailwind-merge',
+      ];
+      const blockedImports = ['next/link', 'next/navigation', 'next/router', '@supabase/supabase-js', '@supabase/ssr'];
+
+      lesson.imports.forEach((importPath) => {
+        if (blockedImports.includes(importPath)) {
+          errors.push(`Lesson ${idx + 1}: Uses blocked import "${importPath}" (navigation/database not allowed)`);
+        } else if (!allowedImports.includes(importPath)) {
+          logger.info(
+            `   ⚠️  Lesson ${idx + 1}: Uses non-whitelisted import "${importPath}" (may need to add to whitelist)`,
+          );
+        }
+      });
     }
   });
 
@@ -174,6 +235,13 @@ const runTest = async (client: ReturnType<typeof createLLMClient>, verbose: bool
       logger.info(`      Original Blocks: ${lesson.originalBlocks.length}`);
       logger.info(`      TSX Length: ${lesson.tsxCode.length} characters`);
 
+      // Display imports if present
+      if (lesson.imports && lesson.imports.length > 0) {
+        logger.info(`      Imports: ${lesson.imports.join(', ')}`);
+      } else {
+        logger.info(`      Imports: None`);
+      }
+
       if (verbose) {
         logger.info('\n      === Generated TSX ===');
         logger.info(lesson.tsxCode);
@@ -218,9 +286,118 @@ const runTest = async (client: ReturnType<typeof createLLMClient>, verbose: bool
 };
 
 /**
+ * Run single-lesson TSX generation test
+ * Tests the sequential generation approach used by the actor machine
+ */
+const runSingleLessonTest = async (
+  client: ReturnType<typeof createLLMClient>,
+  verbose: boolean = false,
+): Promise<TestResult> => {
+  logger.info('─'.repeat(80));
+  logger.info('📝 Test: Single-Lesson TSX Generation (Sequential)');
+  logger.info(`   Testing first lesson from sample: ${SAMPLE_BLOCKS.lessons[0].title}`);
+  logger.info(`   Blocks: ${SAMPLE_BLOCKS.lessons[0].blocks.length}`);
+
+  try {
+    const input: SingleLessonTSXInput = {
+      title: SAMPLE_BLOCKS.lessons[0].title,
+      blocks: SAMPLE_BLOCKS.lessons[0].blocks,
+      context: {
+        topic: SAMPLE_BLOCKS.metadata.topic,
+        ageRange: SAMPLE_BLOCKS.metadata.ageRange,
+        complexity: SAMPLE_BLOCKS.metadata.complexity,
+        domains: SAMPLE_BLOCKS.metadata.domains,
+      },
+    };
+
+    const result = await client.generateSingleLessonTSX(input);
+
+    // Schema validation
+    try {
+      SingleLessonTSXResultSchema.parse(result);
+      logger.info('\n   ✅ Schema validation: PASSED');
+    } catch (error) {
+      logger.info('\n   ❌ Schema validation: FAILED');
+      return {
+        passed: false,
+        errors: [`Schema validation failed: ${error instanceof Error ? error.message : String(error)}`],
+      };
+    }
+
+    // Basic validation
+    const errors: string[] = [];
+
+    if (!result.title || result.title.length < 3) {
+      errors.push('Invalid title');
+    }
+
+    if (!result.tsxCode || result.tsxCode.length < 50) {
+      errors.push('TSX code too short');
+    }
+
+    if (!result.tsxCode.includes('export')) {
+      errors.push('TSX code missing export statement');
+    }
+
+    if (!result.tsxCode.includes('return') && !result.tsxCode.includes('=>')) {
+      errors.push("TSX code doesn't appear to be a valid React component");
+    }
+
+    if (!result.componentName || result.componentName !== 'LessonComponent') {
+      errors.push(`Invalid component name: expected "LessonComponent", got "${result.componentName}"`);
+    }
+
+    logger.info(`\n   📄 Lesson: ${result.title}`);
+    logger.info(`      Component Name: ${result.componentName}`);
+    logger.info(`      TSX Length: ${result.tsxCode.length} characters`);
+    logger.info(`      Original Blocks: ${result.originalBlocks.length}`);
+
+    if (result.imports && result.imports.length > 0) {
+      logger.info(`      Imports: ${result.imports.join(', ')}`);
+    } else {
+      logger.info(`      Imports: None`);
+    }
+
+    if (verbose) {
+      logger.info('\n      === Generated TSX ===');
+      logger.info(result.tsxCode);
+      logger.info('      ' + '='.repeat(40));
+    } else {
+      const preview = result.tsxCode.substring(0, 200).replace(/\n/g, ' ').trim();
+      logger.info(`      Preview: ${preview}...`);
+    }
+
+    if (errors.length === 0) {
+      logger.info('\n   ✅ TEST PASSED');
+      return {
+        passed: true,
+        errors: [],
+      };
+    } else {
+      logger.info('\n   ❌ TEST FAILED');
+      errors.forEach((error) => {
+        logger.info(`      - ${error}`);
+      });
+      return {
+        passed: false,
+        errors,
+      };
+    }
+  } catch (error) {
+    logger.info('\n   ❌ TEST FAILED - Exception thrown');
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.info(`      ${errorMessage}`);
+    return {
+      passed: false,
+      errors: [errorMessage],
+    };
+  }
+};
+
+/**
  * Run TSX generation test
  */
-const runTests = async (verbose: boolean = false): Promise<void> => {
+const runTests = async (verbose: boolean = false, singleOnly: boolean = false): Promise<void> => {
   logger.info('🚀 Starting TSX Generation Test');
   if (verbose) {
     logger.info('   (Verbose mode: showing full TSX output)');
@@ -259,18 +436,38 @@ const runTests = async (verbose: boolean = false): Promise<void> => {
   }
 
   logger.info('\n' + '='.repeat(80));
-  logger.info('🧪 Running TSX generation test...\n');
+  logger.info('🧪 Running TSX generation tests...\n');
 
   const client = createLLMClient();
-  const result = await runTest(client, verbose);
+  const results: TestResult[] = [];
+
+  if (singleOnly) {
+    // Only run single-lesson test
+    logger.info('   (Running single-lesson test only)\n');
+    const singleResult = await runSingleLessonTest(client, verbose);
+    results.push(singleResult);
+  } else {
+    // Run both batch and single-lesson tests
+    logger.info('   (Running both batch and single-lesson tests)\n');
+    const batchResult = await runTest(client, verbose);
+    results.push(batchResult);
+
+    logger.info('\n');
+    const singleResult = await runSingleLessonTest(client, verbose);
+    results.push(singleResult);
+  }
 
   // Summary
   logger.info('\n' + '='.repeat(80));
 
-  if (result.passed) {
-    logger.info('\n🎉 Test passed!\n');
+  const allPassed = results.every((r) => r.passed);
+  const passedCount = results.filter((r) => r.passed).length;
+
+  if (allPassed) {
+    logger.info(`\n🎉 All tests passed! (${passedCount}/${results.length})\n`);
   } else {
-    logger.info('\n⚠️  Test failed. This may be due to:');
+    logger.info(`\n⚠️  Some tests failed (${passedCount}/${results.length} passed)`);
+    logger.info('   This may be due to:');
     logger.info('   - LLM variability (different runs may produce different results)');
     logger.info('   - Model differences (deepseek-coder-v2 works best for TSX)');
     logger.info('   - Prompt engineering needs refinement\n');
@@ -282,6 +479,7 @@ const runTests = async (verbose: boolean = false): Promise<void> => {
   if (!verbose) {
     logger.info('\n💡 Tip: Run with -v or --verbose to see full generated TSX');
   }
+  logger.info('   💡 Tip: Run with --single to test only single-lesson generation');
   logger.info('');
 };
 
@@ -292,9 +490,10 @@ const main = async (): Promise<void> => {
   // Parse command line arguments
   const args = process.argv.slice(2);
   const verbose = args.includes('-v') || args.includes('--verbose');
+  const singleOnly = args.includes('--single');
 
   try {
-    await runTests(verbose);
+    await runTests(verbose, singleOnly);
   } catch (error) {
     logger.error('\n❌ Test execution failed:', error);
     process.exit(1);

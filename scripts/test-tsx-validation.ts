@@ -13,7 +13,8 @@
 import { validateTSX } from '../lib/services/validation/tsx-validation-orchestrator';
 import { validateWithTypeScript } from '../lib/services/validation/typescript-validator';
 import { validateWithESLint } from '../lib/services/validation/eslint-validator';
-import type { TSXValidationResult } from '../lib/types/validation.types';
+import type { TSXValidationResult, TSXValidationError } from '../lib/types/validation.types';
+import { TSX_VALIDATION_FIXTURES } from './fixtures/tsx-validation.fixtures';
 
 /**
  * Console logger for test output
@@ -21,122 +22,8 @@ import type { TSXValidationResult } from '../lib/types/validation.types';
  */
 const log = console.log;
 
-/**
- * Test fixtures for TSX validation
- */
-const FIXTURES = {
-  /**
-   * Valid TSX component - should pass both TypeScript and ESLint
-   */
-  validComponent: `export const PhotosynthesisLesson = () => {
-  return (
-    <main className="min-h-screen bg-gradient-to-b from-green-50 to-blue-50 py-12 px-4">
-      <div className="max-w-4xl mx-auto">
-        <header className="mb-8 text-center">
-          <h1 className="text-4xl font-bold text-green-800 mb-2">
-            Introduction to Photosynthesis
-          </h1>
-          <div className="h-1 w-24 bg-green-600 mx-auto rounded-full"></div>
-        </header>
-
-        <section className="space-y-6">
-          <article className="bg-white rounded-xl shadow-lg p-8 hover:shadow-xl transition-shadow">
-            <h2 className="text-2xl font-bold text-green-700 mb-4">
-              What is photosynthesis?
-            </h2>
-            <p className="text-lg text-gray-700 leading-relaxed">
-              Plants make their own food using sunlight, like having a{' '}
-              <span className="font-bold text-green-600">kitchen inside their leaves</span>.
-            </p>
-          </article>
-        </section>
-      </div>
-    </main>
-  );
-};`,
-
-  /**
-   * Type error - undefined variable
-   */
-  typeError: `export const BrokenLesson = () => {
-  const title = undefined;
-
-  return (
-    <main className="p-4">
-      <h1>{title.toUpperCase()}</h1>
-    </main>
-  );
-};`,
-
-  /**
-   * Missing export statement
-   */
-  noExport: `const LessonComponent = () => {
-  return (
-    <main className="p-4">
-      <h1>Missing Export</h1>
-    </main>
-  );
-};`,
-
-  /**
-   * Invalid JSX syntax - unclosed tag
-   */
-  syntaxError: `export const InvalidJSX = () => {
-  return (
-    <main className="p-4">
-      <h1>Unclosed heading
-    </main>
-  );
-};`,
-
-  /**
-   * Wrong React element type
-   */
-  typeErrorJSX: `export const WrongType = () => {
-  const element: string = <div>Hello</div>;
-
-  return (
-    <main className="p-4">
-      {element}
-    </main>
-  );
-};`,
-
-  /**
-   * Component with TypeScript errors (wrong prop types)
-   */
-  propTypeError: `interface Props {
-  title: string;
-  count: number;
-}
-
-export const PropErrorLesson = ({ title, count }: Props) => {
-  const badTitle: number = title; // Type error
-  const badCount: string = count; // Type error
-
-  return (
-    <main className="p-4">
-      <h1>{badTitle}</h1>
-      <p>{badCount}</p>
-    </main>
-  );
-};`,
-
-  /**
-   * Component with unused variables (ESLint warning, not error)
-   */
-  unusedVars: `export const UnusedVarsLesson = () => {
-  const unused = 'This variable is never used';
-  const alsoUnused = 42;
-
-  return (
-    <main className="p-4">
-      <h1>Hello World</h1>
-    </main>
-  );
-};`,
-};
+// Alias for backward compatibility
+const FIXTURES = TSX_VALIDATION_FIXTURES;
 
 /**
  * Test case definition
@@ -201,6 +88,59 @@ const TEST_CASES: TestCase[] = [
     expectedErrorTypes: ['eslint'],
     description: 'Unused variables (caught by ESLint no-unused-vars rule)',
   },
+  {
+    name: 'Valid Component with Allowed Imports',
+    fixture: FIXTURES.validComponentWithImports,
+    expectedValid: true,
+    description: 'Component using lucide-react, @radix-ui, and clsx (all whitelisted imports)',
+  },
+  {
+    name: 'Blocked Import (next/link)',
+    fixture: FIXTURES.blockedImportNavigation,
+    expectedValid: false,
+    expectedErrorTypes: ['typescript'], // Import validation errors reported as typescript type
+    description: 'Component using next/link which is explicitly blocked (no navigation allowed)',
+  },
+  {
+    name: 'Blocked Import (@supabase)',
+    fixture: FIXTURES.blockedImportDatabase,
+    expectedValid: false,
+    expectedErrorTypes: ['typescript'], // Import validation errors reported as typescript type
+    description: 'Component using @supabase/supabase-js which is explicitly blocked (no database access)',
+  },
+  {
+    name: 'Duplicate Declaration',
+    fixture: FIXTURES.duplicateDeclaration,
+    expectedValid: false,
+    expectedErrorTypes: ['typescript'],
+    description: 'Component name declared twice (const then export) - common LLM mistake',
+  },
+  {
+    name: 'Missing Module Import',
+    fixture: FIXTURES.missingModuleImport,
+    expectedValid: false,
+    expectedErrorTypes: ['typescript'],
+    description: 'Imports non-existent local module ./QuizComponent - common LLM mistake',
+  },
+  {
+    name: 'Infinite Loop (Self-Reference)',
+    fixture: FIXTURES.infiniteLoop,
+    expectedValid: true, // TypeScript doesn't catch runtime infinite loops
+    description: 'Component calls itself - valid TypeScript but causes runtime error',
+  },
+  {
+    name: 'Missing React Import',
+    fixture: FIXTURES.missingReactImport,
+    expectedValid: true, // Valid in React 17+ with new JSX transform
+    description: 'JSX without React import (valid with React 17+ JSX transform)',
+  },
+  {
+    name: 'LLM Generated Buggy Code',
+    fixture: FIXTURES.llmGeneratedBuggy,
+    expectedValid: false,
+    expectedErrorTypes: ['typescript'],
+    description: 'Real LLM output: duplicate declaration + missing import + self-reference',
+  },
 ];
 
 /**
@@ -236,7 +176,7 @@ const runTestCase = async (testCase: TestCase, verbose: boolean): Promise<TestRe
 
   if (validationResult.errors.length > 0) {
     log(`\n   📋 Validation Errors:`);
-    validationResult.errors.forEach((error, idx) => {
+    validationResult.errors.forEach((error: TSXValidationError, idx: number) => {
       log(`      ${idx + 1}. [${error.type}] Line ${error.line}:${error.column} - ${error.message}`);
       if (error.code) {
         log(`         Code: ${error.code}`);
@@ -250,7 +190,7 @@ const runTestCase = async (testCase: TestCase, verbose: boolean): Promise<TestRe
   if (verbose && !passed) {
     log(`\n   📄 Code Sample:`);
     const lines = testCase.fixture.split('\n');
-    lines.slice(0, 10).forEach((line, idx) => {
+    lines.slice(0, 10).forEach((line: string, idx: number) => {
       log(`      ${idx + 1}: ${line}`);
     });
     if (lines.length > 10) {
@@ -267,7 +207,7 @@ const runTestCase = async (testCase: TestCase, verbose: boolean): Promise<TestRe
     expectedValid: testCase.expectedValid,
     actualValid: validationResult.valid,
     errorCount: validationResult.errors.length,
-    errors: validationResult.errors.map((e) => e.message),
+    errors: validationResult.errors.map((e: TSXValidationError) => e.message),
   };
 };
 
@@ -286,7 +226,7 @@ const runIndividualValidatorTests = async (): Promise<void> => {
   const tsErrors = validateWithTypeScript(FIXTURES.typeError);
   log(`   Errors found: ${tsErrors.length}`);
   if (tsErrors.length > 0) {
-    tsErrors.forEach((error, idx) => {
+    tsErrors.forEach((error: TSXValidationError, idx: number) => {
       log(`   ${idx + 1}. Line ${error.line}:${error.column} - ${error.message}`);
     });
   }
@@ -298,7 +238,7 @@ const runIndividualValidatorTests = async (): Promise<void> => {
   const eslintErrors = await validateWithESLint(FIXTURES.validComponent);
   log(`   Errors found: ${eslintErrors.length}`);
   if (eslintErrors.length > 0) {
-    eslintErrors.forEach((error, idx) => {
+    eslintErrors.forEach((error: TSXValidationError, idx: number) => {
       log(`   ${idx + 1}. Line ${error.line}:${error.column} - ${error.message}`);
     });
   }
@@ -336,8 +276,8 @@ const runTests = async (verbose: boolean): Promise<void> => {
   log('📊 Test Summary');
   log('═'.repeat(80));
 
-  const passedCount = results.filter((r) => r.passed).length;
-  const failedCount = results.filter((r) => !r.passed).length;
+  const passedCount = results.filter((r: TestResult) => r.passed).length;
+  const failedCount = results.filter((r: TestResult) => !r.passed).length;
 
   log(`\n   Total Tests: ${results.length}`);
   log(`   ✅ Passed: ${passedCount}`);
@@ -346,8 +286,8 @@ const runTests = async (verbose: boolean): Promise<void> => {
   if (failedCount > 0) {
     log(`\n   Failed Tests:`);
     results
-      .filter((r) => !r.passed)
-      .forEach((r) => {
+      .filter((r: TestResult) => !r.passed)
+      .forEach((r: TestResult) => {
         log(`      - ${r.testName}`);
         log(`        Expected: ${r.expectedValid ? 'valid' : 'invalid'}`);
         log(`        Got: ${r.actualValid ? 'valid' : 'invalid'}`);

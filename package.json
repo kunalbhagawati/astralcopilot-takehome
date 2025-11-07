@@ -68,7 +68,7 @@
     "*.{js,jsx,ts,tsx}": [
       "eslint --fix",
       "prettier --write",
-      "tsc-files --noEmit"
+      "tsc-files --noEmit --incremental false"
     ]
   }
 }

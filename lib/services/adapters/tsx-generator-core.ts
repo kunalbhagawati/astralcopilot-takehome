@@ -13,7 +13,12 @@
 import { generateObject } from 'ai';
 import type { LanguageModel } from 'ai';
 import type { z } from 'zod';
-import type { TSXGenerationInput, TSXGenerationResult } from '../../types/tsx-generation.types';
+import type {
+  TSXGenerationInput,
+  TSXGenerationResult,
+  SingleLessonTSXInput,
+  SingleLessonTSXResult,
+} from '../../types/tsx-generation.types';
 
 /**
  * Configuration for TSX generation
@@ -88,6 +93,80 @@ export const generateTSX = async (
   input: TSXGenerationInput,
   config: TSXGenerationConfig,
 ): Promise<TSXGenerationResult> => {
+  const result = await generateObject({
+    model: config.model,
+    schema: config.schema,
+    system: config.systemPrompt,
+    prompt: config.buildUserPrompt(input),
+    temperature: config.temperature ?? 0.4, // Lower temp for code generation (more deterministic)
+  });
+
+  return result.object;
+};
+
+/**
+ * Configuration for single-lesson TSX generation
+ */
+export interface SingleLessonTSXConfig {
+  /** Vercel AI SDK model instance */
+  model: LanguageModel;
+  /** System prompt for TSX generation */
+  systemPrompt: string;
+  /** Function to build user prompt from input */
+  buildUserPrompt: (input: SingleLessonTSXInput) => string;
+  /** Zod schema for validation */
+  schema: z.ZodType<SingleLessonTSXResult>;
+  /** Temperature for generation (0.0-1.0) */
+  temperature?: number;
+}
+
+/**
+ * Generate TSX code for a single lesson
+ *
+ * Sequential generation approach: one lesson at a time.
+ * Enables better parallelization and error isolation compared to batch generation.
+ *
+ * Pure function that delegates to Vercel AI SDK.
+ * No error handling - let errors bubble up for caller to handle.
+ *
+ * @param input - Single lesson TSX input (title, blocks, context)
+ * @param config - Generation configuration
+ * @returns Promise resolving to SingleLessonTSXResult
+ *
+ * @example REPL usage
+ * ```typescript
+ * import { generateSingleLessonTSX } from './tsx-generator-core'
+ * import { createAIModel } from './llm-config'
+ * import { SingleLessonTSXResultSchema } from '../../types/tsx-generation.types'
+ * import { TSX_GENERATION_SYSTEM_PROMPT, buildSingleLessonTSXPrompt } from '../../prompts/tsx-generation.prompts'
+ *
+ * const model = createAIModel('deepseek-coder-v2')
+ * const input = {
+ *   title: "Introduction to Photosynthesis",
+ *   blocks: [
+ *     { type: "text", content: "**What is photosynthesis?** Plants make..." },
+ *     { type: "image", format: "svg", content: "...", alt: "Diagram" }
+ *   ],
+ *   context: {
+ *     topic: "Photosynthesis",
+ *     domains: ["science", "biology"],
+ *     ageRange: [10, 11],
+ *     complexity: "moderate"
+ *   }
+ * }
+ * const result = await generateSingleLessonTSX(input, {
+ *   model,
+ *   systemPrompt: TSX_GENERATION_SYSTEM_PROMPT,
+ *   buildUserPrompt: buildSingleLessonTSXPrompt,
+ *   schema: SingleLessonTSXResultSchema,
+ *   temperature: 0.4
+ * })
+ * ```
+ */
+export const generateSingleLessonTSX = async (
+  input: SingleLessonTSXInput,
+  config: SingleLessonTSXConfig,
+): Promise<SingleLessonTSXResult> => {
   const result = await generateObject({
     model: config.model,
     schema: config.schema,

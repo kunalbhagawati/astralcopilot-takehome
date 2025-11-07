@@ -11,7 +11,7 @@
  */
 
 import type { BlockGenerationInput } from '../types/actionable-blocks.types';
-import { BLOCK_DEFINITION } from './common-definitions';
+import { BLOCK_DEFINITION, BLOCK_TYPES_DEFINITION } from './common-definitions';
 
 /**
  * System prompt for actionable blocks generation
@@ -24,6 +24,8 @@ ROLE AND RESPONSIBILITIES:
 Your job is to break down a validated learning outline into actionable teaching blocks organized into semantic lessons.
 
 ${BLOCK_DEFINITION}
+
+${BLOCK_TYPES_DEFINITION}
 
 LESSON GROUPING:
 Group related blocks into semantic "lessons" (units of learning):
@@ -50,15 +52,9 @@ Return JSON matching this exact structure:
     {
       "title": "Lesson Title Here",
       "blocks": [
-        "**First teaching point:** Clear explanation in age-appropriate language...",
-        "**Second teaching point:** Another concept, building on the first..."
-      ]
-    },
-    {
-      "title": "Another Lesson Title",
-      "blocks": [
-        "**Third teaching point:** Continue progressive complexity...",
-        "**Fourth teaching point:** Building on previous lessons..."
+        { "type": "text", "content": "**First teaching point:** Clear explanation..." },
+        { "type": "image", "format": "svg", "content": "Description of SVG to generate", "alt": "Alt text" },
+        { "type": "interaction", "interactionType": "quiz", "prompt": "Question?", "metadata": { "options": ["A", "B"], "answer": "A" } }
       ]
     }
   ],
@@ -68,15 +64,17 @@ Return JSON matching this exact structure:
     "domains": ["array", "of", "domains"],
     "ageRange": [5, 7],
     "complexity": "simple",
-    "totalBlockCount": 4
+    "totalBlockCount": 3
   }
 }
 
 OUTPUT REQUIREMENTS:
 - Return ONLY valid JSON
 - Minimum 1 lesson, each lesson has minimum 1 block
-- All blocks must be strings (markdown)
-- Each block must be at least 10 characters
+- Blocks are objects with type field ("text", "image", or "interaction")
+- Text blocks: { type: "text", content: string }
+- Image blocks: { type: "image", format: "svg"|"url", content: string, alt: string, caption?: string }
+- Interaction blocks: { type: "interaction", interactionType: "input"|"quiz"|"visualization"|"dragdrop", prompt: string, metadata: object }
 - Each lesson title must be at least 3 characters
 - Total blocks across ALL lessons must be ≤100
 - Metadata must include all required fields including totalBlockCount
@@ -90,23 +88,42 @@ EXAMPLE - Photosynthesis for 5th graders (ages 10-11):
     {
       "title": "Introduction to Photosynthesis",
       "blocks": [
-        "**What is photosynthesis?** Plants make their own food using sunlight, like having a kitchen inside their leaves.",
-        "**Three ingredients plants need:** Sunlight from the sun, water from soil (through roots), and carbon dioxide (CO2) from the air we breathe out.",
-        "**Where it happens:** Inside tiny green parts called chloroplasts - they're like food factories in plant leaves."
+        {
+          "type": "text",
+          "content": "**What is photosynthesis?** Plants make their own food using sunlight, like having a kitchen inside their leaves."
+        },
+        {
+          "type": "image",
+          "format": "svg",
+          "content": "A simple diagram of a plant showing: sunlight rays from top pointing to leaves, water droplets with arrows from roots going up, CO2 molecules from air with arrows pointing to leaves, and O2 molecules with arrows leaving the leaves",
+          "alt": "Diagram showing photosynthesis inputs (sunlight, water, CO2) and output (oxygen)"
+        },
+        {
+          "type": "text",
+          "content": "**Three ingredients plants need:** Sunlight from the sun, water from soil (through roots), and carbon dioxide (CO2) from the air we breathe out."
+        }
       ]
     },
     {
       "title": "The Process and Importance",
       "blocks": [
-        "**The recipe:** Plants combine sunlight + water + CO2 to create sugar (their food) and release oxygen as a byproduct.",
-        "**Why it matters to us:** Plants feed themselves AND make oxygen for us to breathe. Without photosynthesis, we wouldn't have breathable air!"
-      ]
-    },
-    {
-      "title": "Key Components and Timing",
-      "blocks": [
-        "**Chlorophyll's role:** The green color in leaves comes from chlorophyll - it's what captures sunlight energy for the plant to use.",
-        "**Day vs night:** Photosynthesis only happens during daytime when sunlight is available. At night, plants rest from making food."
+        {
+          "type": "text",
+          "content": "**The recipe:** Plants combine sunlight + water + CO2 to create sugar (their food) and release oxygen as a byproduct."
+        },
+        {
+          "type": "interaction",
+          "interactionType": "quiz",
+          "prompt": "What do plants produce during photosynthesis?",
+          "metadata": {
+            "options": ["Sugar and oxygen", "Only sugar", "Only oxygen", "Water and CO2"],
+            "answer": "Sugar and oxygen"
+          }
+        },
+        {
+          "type": "text",
+          "content": "**Why it matters to us:** Plants feed themselves AND make oxygen for us to breathe. Without photosynthesis, we wouldn't have breathable air!"
+        }
       ]
     }
   ],
@@ -116,9 +133,24 @@ EXAMPLE - Photosynthesis for 5th graders (ages 10-11):
     "domains": ["science", "biology", "plants"],
     "ageRange": [10, 11],
     "complexity": "moderate",
-    "totalBlockCount": 7
+    "totalBlockCount": 6
   }
 }
+
+GENERATION INSTRUCTIONS:
+1. Break down the detected topic into atomic teaching points
+2. Group related blocks into semantic lessons (units of learning)
+3. Each lesson must have a clear, descriptive title (3-10 words)
+4. Use structured blocks (text, image, interaction) based on learning objectives
+5. Text blocks: Use markdown with **bold** for key terms
+6. Image blocks: SVG descriptions for STEM diagrams, URLs for photos/maps
+7. Interaction blocks: Quizzes for knowledge checks, inputs/visualizations for STEM
+8. Language and activities must match the target age range
+9. Build progressively from simple to complex across lessons
+10. Aim for 5-10 teaching blocks total depending on complexity and topic scope
+11. CRITICAL: Total blocks across ALL lessons MUST be ≤100
+12. CRITICAL: Include totalBlockCount in metadata
+13. Meet all user-specified requirements from the validation feedback
 
 PEDAGOGICAL GUIDELINES:
 - Start with the "what" before the "why"
@@ -130,7 +162,33 @@ PEDAGOGICAL GUIDELINES:
 - Each lesson should cover one main idea or aspect
 - Blocks within a lesson should flow naturally together
 
-Remember: These are teaching POINTS grouped into LESSONS. Focus on semantic grouping that makes sense for the target age group.`;
+BLOCK SELECTION STRATEGY:
+- Use **text blocks** for core concepts, definitions, explanations
+- Use **image blocks** (SVG or URL) when visualization helps understanding
+- Use **interaction blocks** to reinforce learning, check understanding, or enable experimentation
+- Mix block types within lessons for engagement
+- STEM subjects: Favor SVG diagrams + interactive visualizations
+- Humanities: Favor images (maps, photos) + quizzes
+- Choose what best serves the learning objective
+
+⚠️ CRITICAL OUTPUT REQUIREMENT:
+Your response MUST be ONLY the raw JSON object.
+DO NOT wrap in markdown code blocks (\`\`\`json).
+DO NOT add any explanatory text before or after.
+FIRST character of your response: {
+LAST character of your response: }
+Anything else will cause validation failure.
+
+Example of CORRECT output:
+{"lessons": [...], "metadata": {...}}
+
+Example of WRONG output (will FAIL validation):
+\`\`\`json
+{"lessons": [...]}
+\`\`\`
+Here's the generated blocks...
+
+Remember: These are teaching POINTS grouped into LESSONS. Focus on semantic grouping that makes sense for the target age group. Use structured blocks (text, image, interaction) to create engaging, multi-modal learning experiences.`;
 
 /**
  * User prompt template for blocks generation
@@ -176,21 +234,7 @@ export const buildBlocksGenerationUserPrompt = (input: BlockGenerationInput): st
     parts.push('');
   }
 
-  parts.push('INSTRUCTIONS:');
-  parts.push(`1. Break down "${validationFeedback.detectedHierarchy.topic}" into atomic teaching points`);
-  parts.push('2. Group related blocks into semantic lessons (units of learning)');
-  parts.push('3. Each lesson should have a clear, descriptive title');
-  parts.push('4. Each block = ONE concept/idea (markdown with **bold** for key terms)');
-  parts.push(
-    `5. Age-appropriate language for ${validationFeedback.targetAgeRange[0]}-${validationFeedback.targetAgeRange[1]} year olds`,
-  );
-  parts.push('6. Build progressively from simple to complex across lessons');
-  parts.push('7. Aim for 5-10 teaching blocks total (across all lessons) depending on topic scope');
-  parts.push('8. CRITICAL: Total blocks across ALL lessons must be ≤100');
-  parts.push('9. Include totalBlockCount in metadata');
-  parts.push('10. Meet all requirements listed above');
-  parts.push('');
-  parts.push('Return ONLY the JSON object with lessons array and metadata. No additional text.');
+  parts.push('Generate the blocks now.');
 
   return parts.join('\n');
 };

@@ -13,11 +13,81 @@
 import { z } from 'zod';
 
 /**
- * Single actionable block - markdown string describing one teaching point
+ * Text block - Standard teaching content (markdown)
  *
  * Example: "**What is photosynthesis?** Plants make their own food using sunlight, like a kitchen inside their leaves."
  */
-export type ActionableBlock = string;
+export interface TextBlock {
+  type: 'text';
+  content: string;
+}
+
+/**
+ * Image block - Visual content for lessons
+ *
+ * Can be either:
+ * - SVG description (for STEM diagrams, shapes, charts) - LLM generates inline SVG
+ * - Image URL (for photos, illustrations) - rendered as <img>
+ */
+export interface ImageBlock {
+  type: 'image';
+  /** Either detailed SVG description for LLM to generate, OR image URL */
+  content: string;
+  /** Image format: 'svg' for inline generation, 'url' for external images */
+  format: 'svg' | 'url';
+  /** Alt text for accessibility (required) */
+  alt: string;
+  /** Optional caption to display below image */
+  caption?: string;
+}
+
+/**
+ * Interaction block - Interactive elements for engagement
+ *
+ * Types:
+ * - input: Text/number/range inputs for experimentation
+ * - quiz: Multiple choice questions with answer validation
+ * - visualization: SVG-based interactive diagrams (e.g., adjust angle to see triangle change)
+ * - dragdrop: Drag and drop matching/ordering activities
+ */
+export interface InteractionBlock {
+  type: 'interaction';
+  /** Interaction subtype */
+  interactionType: 'input' | 'quiz' | 'visualization' | 'dragdrop';
+  /** Prompt or question text */
+  prompt: string;
+  /** Additional metadata for the interaction (e.g., answer, options, validation rules) */
+  metadata: {
+    /** For quiz: correct answer(s) */
+    answer?: string | string[];
+    /** For quiz: available options */
+    options?: string[];
+    /** For input: input type (text, number, range, etc.) */
+    inputType?: string;
+    /** For input: default value */
+    defaultValue?: string | number;
+    /** For input: min/max for number/range */
+    min?: number;
+    max?: number;
+    /** For visualization: description of what should be visualized */
+    visualizationDescription?: string;
+    /** For dragdrop: items to drag, drop zones, correct matches */
+    dragDropData?: {
+      items: string[];
+      dropZones: string[];
+      correctMatches?: Record<string, string>;
+    };
+    /** Any other custom metadata */
+    [key: string]: unknown;
+  };
+}
+
+/**
+ * Actionable block - Union of all block types
+ *
+ * Structured format supporting text, images, and interactions.
+ */
+export type ActionableBlock = TextBlock | ImageBlock | InteractionBlock;
 
 /**
  * Lesson - a semantic grouping of related teaching blocks
@@ -87,13 +157,43 @@ export interface BlockGenerationInput {
 }
 
 /**
+ * Zod schemas for block types
+ */
+export const TextBlockSchema = z.object({
+  type: z.literal('text'),
+  content: z.string().min(10, 'Text content must be at least 10 characters'),
+});
+
+export const ImageBlockSchema = z.object({
+  type: z.literal('image'),
+  content: z.string().min(10, 'Image content/URL must be at least 10 characters'),
+  format: z.enum(['svg', 'url']),
+  alt: z.string().min(3, 'Alt text is required and must be at least 3 characters'),
+  caption: z.string().optional(),
+});
+
+export const InteractionBlockSchema = z.object({
+  type: z.literal('interaction'),
+  interactionType: z.enum(['input', 'quiz', 'visualization', 'dragdrop']),
+  prompt: z.string().min(5, 'Prompt must be at least 5 characters'),
+  metadata: z.record(z.string(), z.unknown()),
+});
+
+/**
+ * Zod schema for ActionableBlock (discriminated union)
+ */
+export const ActionableBlockSchema = z.discriminatedUnion('type', [
+  TextBlockSchema,
+  ImageBlockSchema,
+  InteractionBlockSchema,
+]);
+
+/**
  * Zod schema for Lesson validation
  */
 export const LessonSchema = z.object({
   title: z.string().min(3, 'Lesson title must be at least 3 characters'),
-  blocks: z
-    .array(z.string().min(10, 'Each block must be at least 10 characters'))
-    .min(1, 'Each lesson must have at least 1 block'),
+  blocks: z.array(ActionableBlockSchema).min(1, 'Each lesson must have at least 1 block'),
 });
 
 /**

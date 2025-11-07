@@ -70,13 +70,77 @@ const validateBlocksFormat = (
     }
   });
 
-  // 2. Block string validation (across all lessons)
+  // 2. Structured block validation (across all lessons)
   result.lessons.forEach((lesson, lessonIdx) => {
     lesson.blocks.forEach((block, blockIdx) => {
-      if (typeof block !== 'string') {
-        errors.push(`Lesson ${lessonIdx + 1}, Block ${blockIdx + 1} is not a string: ${typeof block}`);
-      } else if (block.length < 10) {
-        errors.push(`Lesson ${lessonIdx + 1}, Block ${blockIdx + 1} is too short: ${block.length} chars (minimum 10)`);
+      // Check if block is an object (structured format)
+      if (typeof block !== 'object' || block === null) {
+        errors.push(`Lesson ${lessonIdx + 1}, Block ${blockIdx + 1} is not a structured block object: ${typeof block}`);
+        return;
+      }
+
+      // Check for type field
+      if (!('type' in block) || typeof block.type !== 'string') {
+        errors.push(`Lesson ${lessonIdx + 1}, Block ${blockIdx + 1} missing valid 'type' field`);
+        return;
+      }
+
+      // Extract type for error messaging (TypeScript narrows to never in default case)
+      const blockType = block.type;
+
+      // Validate based on block type
+      switch (block.type) {
+        case 'text':
+          if (!('content' in block) || typeof block.content !== 'string') {
+            errors.push(`Lesson ${lessonIdx + 1}, Block ${blockIdx + 1} (TextBlock) missing 'content' field`);
+          } else if (block.content.length < 10) {
+            errors.push(
+              `Lesson ${lessonIdx + 1}, Block ${blockIdx + 1} (TextBlock) content too short: ${block.content.length} chars (minimum 10)`,
+            );
+          }
+          break;
+
+        case 'image':
+          if (!('format' in block) || !['svg', 'url'].includes(block.format as string)) {
+            errors.push(
+              `Lesson ${lessonIdx + 1}, Block ${blockIdx + 1} (ImageBlock) invalid or missing 'format' (must be 'svg' or 'url')`,
+            );
+          }
+          if (!('content' in block) || typeof block.content !== 'string' || block.content.length < 10) {
+            errors.push(
+              `Lesson ${lessonIdx + 1}, Block ${blockIdx + 1} (ImageBlock) invalid or missing 'content' (minimum 10 chars)`,
+            );
+          }
+          if (!('alt' in block) || typeof block.alt !== 'string' || block.alt.length < 3) {
+            errors.push(
+              `Lesson ${lessonIdx + 1}, Block ${blockIdx + 1} (ImageBlock) invalid or missing 'alt' text (minimum 3 chars)`,
+            );
+          }
+          break;
+
+        case 'interaction':
+          if (
+            !('interactionType' in block) ||
+            !['input', 'quiz', 'visualization', 'dragdrop'].includes(block.interactionType as string)
+          ) {
+            errors.push(
+              `Lesson ${lessonIdx + 1}, Block ${blockIdx + 1} (InteractionBlock) invalid or missing 'interactionType'`,
+            );
+          }
+          if (!('prompt' in block) || typeof block.prompt !== 'string' || block.prompt.length < 5) {
+            errors.push(
+              `Lesson ${lessonIdx + 1}, Block ${blockIdx + 1} (InteractionBlock) invalid or missing 'prompt' (minimum 5 chars)`,
+            );
+          }
+          if (!('metadata' in block) || typeof block.metadata !== 'object') {
+            errors.push(`Lesson ${lessonIdx + 1}, Block ${blockIdx + 1} (InteractionBlock) missing 'metadata' object`);
+          }
+          break;
+
+        default:
+          errors.push(
+            `Lesson ${lessonIdx + 1}, Block ${blockIdx + 1} has unknown type: "${blockType}" (must be 'text', 'image', or 'interaction')`,
+          );
       }
     });
   });
@@ -177,7 +241,22 @@ const runTest = async (
       result.lessons.forEach((lesson, lessonIdx) => {
         logger.info(`\n      Lesson ${lessonIdx + 1}: ${lesson.title}`);
         lesson.blocks.forEach((block, blockIdx) => {
-          logger.info(`         Block ${blockIdx + 1}: ${block}`);
+          if (typeof block === 'object' && block !== null && 'type' in block) {
+            // Display structured block
+            if (block.type === 'text') {
+              logger.info(`         Block ${blockIdx + 1} [Text]: ${block.content}`);
+            } else if (block.type === 'image') {
+              const caption = 'caption' in block ? ` | Caption: "${block.caption}"` : '';
+              logger.info(
+                `         Block ${blockIdx + 1} [Image/${block.format}]: Alt="${block.alt}"${caption} | Content: ${block.content.substring(0, 60)}...`,
+              );
+            } else if (block.type === 'interaction') {
+              logger.info(`         Block ${blockIdx + 1} [Interaction/${block.interactionType}]: ${block.prompt}`);
+            }
+          } else {
+            // Fallback for non-structured blocks (backward compatibility)
+            logger.info(`         Block ${blockIdx + 1}: ${String(block)}`);
+          }
         });
       });
     } else {
@@ -185,8 +264,22 @@ const runTest = async (
       result.lessons.slice(0, 2).forEach((lesson, lessonIdx) => {
         logger.info(`\n      Lesson ${lessonIdx + 1}: ${lesson.title}`);
         lesson.blocks.slice(0, 2).forEach((block, blockIdx) => {
-          const preview = block.length > 80 ? block.substring(0, 80) + '...' : block;
-          logger.info(`         ${blockIdx + 1}. ${preview}`);
+          if (typeof block === 'object' && block !== null && 'type' in block) {
+            // Display structured block preview
+            if (block.type === 'text') {
+              const preview = block.content.length > 80 ? block.content.substring(0, 80) + '...' : block.content;
+              logger.info(`         ${blockIdx + 1}. [Text] ${preview}`);
+            } else if (block.type === 'image') {
+              logger.info(`         ${blockIdx + 1}. [Image/${block.format}] Alt: "${block.alt}"`);
+            } else if (block.type === 'interaction') {
+              logger.info(`         ${blockIdx + 1}. [${block.interactionType}] ${block.prompt}`);
+            }
+          } else {
+            // Fallback for non-structured blocks
+            const blockStr = String(block);
+            const preview = blockStr.length > 80 ? blockStr.substring(0, 80) + '...' : blockStr;
+            logger.info(`         ${blockIdx + 1}. ${preview}`);
+          }
         });
         if (lesson.blocks.length > 2) {
           logger.info(`         ... (${lesson.blocks.length - 2} more blocks in this lesson)`);
