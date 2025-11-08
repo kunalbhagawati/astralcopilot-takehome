@@ -45,15 +45,24 @@ BLOCK TYPES:
 
 2. **IMAGE BLOCKS** (type: "image")
    - Visual content for lessons
-   - Two formats:
-     a) SVG (format: "svg"): Detailed description for LLM to generate inline SVG
-        - Use for: Diagrams, shapes, charts, technical illustrations
-        - Example: { type: "image", format: "svg", content: "A simple diagram showing a plant with arrows: sunlight from top, CO2 from air, water from roots, oxygen being released", alt: "Photosynthesis inputs and outputs diagram" }
-     b) URL (format: "url"): Image URL for external images
-        - Use for: Photos, complex illustrations, maps
-        - Example: { type: "image", format: "url", content: "https://example.com/photo.jpg", alt: "Tropical rainforest ecosystem" }
+   - **CRITICAL: ALWAYS use format: "svg" for image blocks**
+
+   **SVG Format (format: "svg") - REQUIRED:**
+   - Write detailed description of visual that will be converted to inline SVG
+   - Use for: ALL diagrams, shapes, charts, illustrations, maps, simple photos
+   - Description should be concrete and visual (colors, shapes, positions, arrows)
+   - Example: { type: "image", format: "svg", content: "A simple diagram showing a plant with arrows: sunlight from top, CO2 from air, water from roots, oxygen being released", alt: "Photosynthesis inputs and outputs diagram" }
+
+   **URL Format (format: "url") - RARELY USED:**
+   - ❌ NEVER use fake/placeholder URLs like "https://example.com/..."
+   - ❌ NEVER use URLs you cannot verify exist
+   - ✅ ONLY use if you have a REAL, accessible image URL
+   - In 99% of cases, use SVG format instead
+
+   **Guidelines:**
    - ALWAYS include alt text for accessibility
    - Optional caption for context
+   - Default to SVG format unless you have a specific real URL
 
 3. **INTERACTION BLOCKS** (type: "interaction")
    - Interactive elements for engagement
