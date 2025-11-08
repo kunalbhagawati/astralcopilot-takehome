@@ -1,11 +1,8 @@
+import type { EnhancedValidationResult } from '@/lib/types/validation.types';
 import { ValidationResult } from '@/lib/types/validation.types';
 import { isEmpty, isNil } from 'ramda';
-import type { EnhancedValidationResult } from '@/lib/types/validation.types';
-import { EnhancedValidationResultSchema } from '@/lib/types/validation.types';
 import { applyValidationThresholds } from '../validation-rules.service';
-import { createAIModel } from './llm-config';
-import { generateValidationResult } from './outline-validation.core';
-import { VALIDATION_SYSTEM_PROMPT, buildValidationUserPrompt } from '../../prompts/validation.prompts';
+import { createContextForOutlineValidation, generateValidationResult } from './outline-validation.core';
 
 /**
  * Adapter interface for outline validation systems
@@ -63,16 +60,8 @@ export class LLMOutlineValidator implements OutlineValidator {
 
     // LLM-based validation for safety, specificity, and actionability
     // Returns raw scores and feedback
-    const modelName = process.env.OUTLINE_VALIDATION_MODEL || 'llama3.1';
-    const model = createAIModel(modelName);
-
-    const enhancedResult = await generateValidationResult(outline, {
-      model,
-      systemPrompt: VALIDATION_SYSTEM_PROMPT,
-      buildUserPrompt: buildValidationUserPrompt,
-      schema: EnhancedValidationResultSchema,
-      temperature: 0.2,
-    });
+    const context = createContextForOutlineValidation();
+    const enhancedResult = await generateValidationResult(context, outline);
 
     // Apply threshold business rules to determine pass/fail
     const validationOutcome = applyValidationThresholds(enhancedResult);

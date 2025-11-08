@@ -10,12 +10,7 @@
  * Note: Verbose mode shows all generated blocks (default shows first 2 only)
  */
 
-import {
-  BLOCKS_GENERATION_SYSTEM_PROMPT,
-  buildBlocksGenerationUserPrompt,
-} from '../lib/prompts/blocks-generation.prompts';
-import { generateBlocks } from '../lib/services/adapters/blocks-generator-core';
-import { createAIModel } from '../lib/services/adapters/llm-config';
+import { createContextForBlocksGeneration, generateBlocks } from '../lib/services/adapters/blocks-generator-core';
 import { logger } from '../lib/services/logger';
 import type { ActionableBlocksResult } from '../lib/types/actionable-blocks.types';
 import { ActionableBlocksResultSchema } from '../lib/types/actionable-blocks.types';
@@ -212,16 +207,8 @@ const runTest = async (fixture: BlockGenerationFixture, verbose: boolean = false
 
   try {
     // Generate blocks
-    const modelName = process.env.CODE_GENERATION_MODEL || 'qwen2.5-coder';
-    const model = createAIModel(modelName);
-
-    const result = await generateBlocks(fixture.input, {
-      model,
-      systemPrompt: BLOCKS_GENERATION_SYSTEM_PROMPT,
-      buildUserPrompt: buildBlocksGenerationUserPrompt,
-      schema: ActionableBlocksResultSchema,
-      temperature: 0.6,
-    });
+    const context = createContextForBlocksGeneration();
+    const result = await generateBlocks(context, fixture.input);
 
     // Schema validation
     try {

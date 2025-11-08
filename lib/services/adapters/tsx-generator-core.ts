@@ -8,124 +8,68 @@
  * - Follow SRP and SoC principles
  *
  * Converts markdown teaching blocks into production-ready TSX components.
+ *
+ * Context pattern: Model-specific config bundled together for consistency between tests and production.
  */
 
-import { generateText } from 'ai';
 import type { LanguageModel } from 'ai';
+import { generateText } from 'ai';
+import {
+  TSX_GENERATION_SYSTEM_PROMPT,
+  buildSingleLessonTSXPrompt,
+  buildTSXGenerationUserPrompt,
+} from '../../prompts/tsx-generation.prompts';
 import type {
-  TSXGenerationInput,
-  TSXGenerationResult,
   SingleLessonTSXInput,
   SingleLessonTSXResult,
+  TSXGenerationInput,
+  TSXGenerationResult,
 } from '../../types/tsx-generation.types';
 import { stripMarkdownFences } from '../../utils/strip-markdown-fences';
+import { createAIModel } from './llm-config';
 
 /**
- * Configuration for TSX generation
+ * Context for single-lesson TSX generation
+ * Bundles all model-specific configuration for this generation task
  */
-export interface TSXGenerationConfig {
-  /** Vercel AI SDK model instance */
+export interface SingleLessonTSXContext {
   model: LanguageModel;
-  /** System prompt for TSX generation */
+  temperature: number;
   systemPrompt: string;
-  /** Function to build user prompt from input */
-  buildUserPrompt: (input: TSXGenerationInput) => string;
-  /** Temperature for generation (0.0-1.0) */
-  temperature?: number;
+  buildUserPrompt: (input: SingleLessonTSXInput) => string;
 }
 
 /**
- * Generate TSX code from actionable blocks
+ * Create context for single-lesson TSX generation
+ * Bundles model + prompts + temperature for this specific task
  *
- * Pure function that delegates to Vercel AI SDK.
- * No error handling - let errors bubble up for caller to handle.
- * Easy to test and use in REPL.
+ * Used by both production code and tests to ensure identical configuration.
  *
- * This is the THIRD LLM call in the flow:
- * 1. Validation LLM call → produces scores/feedback
- * 2. Blocks generation LLM call → produces teaching points
- * 3. TSX generation LLM call (this function) → produces React/Next.js components
+ * @returns TSX generation context with all configuration
  *
- * @param input - TSX generation input (blocks result from Stage 2)
- * @param config - Generation configuration
- * @returns Promise resolving to TSXGenerationResult
- *
- * @example REPL usage
+ * @example Production usage
  * ```typescript
- * import { generateTSX } from './tsx-generator-core'
- * import { createAIModel } from './llm-config'
- * import { TSXGenerationResultSchema } from '../../types/tsx-generation.types'
- * import { TSX_GENERATION_SYSTEM_PROMPT, buildTSXGenerationUserPrompt } from '../../prompts/tsx-generation.prompts'
+ * const context = createContextForSingleLessonTSX();
+ * const result = await generateSingleLessonTSX(context, input);
+ * ```
  *
- * const model = createAIModel('deepseek-coder-v2')
- * const input = {
- *   blocksResult: {
- *     lessons: [
- *       {
- *         title: "Introduction to Photosynthesis",
- *         blocks: [
- *           "**What is photosynthesis?** Plants make their own food...",
- *           "**Three ingredients:** Sunlight, water, CO2..."
- *         ]
- *       }
- *     ],
- *     metadata: {
- *       topic: "Photosynthesis",
- *       domains: ["science", "biology"],
- *       ageRange: [10, 11],
- *       complexity: "moderate",
- *       totalBlockCount: 2
- *     }
- *   }
- * }
- * const result = await generateTSX(input, {
- *   model,
- *   systemPrompt: TSX_GENERATION_SYSTEM_PROMPT,
- *   buildUserPrompt: buildTSXGenerationUserPrompt,
- *   schema: TSXGenerationResultSchema,
- *   temperature: 0.4
- * })
+ * @example Test usage
+ * ```typescript
+ * const context = createContextForSingleLessonTSX();
+ * const result = await generateSingleLessonTSX(context, testInput);
  * ```
  */
-export const generateTSX = async (
-  input: TSXGenerationInput,
-  config: TSXGenerationConfig,
-): Promise<TSXGenerationResult> => {
-  const result = await generateText({
-    model: config.model,
-    system: config.systemPrompt,
-    prompt: config.buildUserPrompt(input),
-    temperature: config.temperature ?? 0.4, // Lower temp for code generation (more deterministic)
-  });
+export const createContextForSingleLessonTSX = (): SingleLessonTSXContext => {
+  const modelName = process.env.CODE_GENERATION_MODEL || 'qwen2.5-coder';
+  const model = createAIModel(modelName);
 
-  // Return raw TSX code wrapped in result format
-  // The result.text contains the complete TSX file content
   return {
-    lessons: input.blocksResult.lessons.map((lesson) => ({
-      title: lesson.title,
-      tsxCode: result.text, // Raw TSX code from LLM
-    })),
-    metadata: {
-      lessonCount: input.blocksResult.lessons.length,
-      model: typeof config.model === 'string' ? config.model : 'unknown',
-      generatedAt: new Date().toISOString(),
-    },
+    model,
+    temperature: 0.4, // Lower temperature for deterministic code generation
+    systemPrompt: TSX_GENERATION_SYSTEM_PROMPT,
+    buildUserPrompt: buildSingleLessonTSXPrompt,
   };
 };
-
-/**
- * Configuration for single-lesson TSX generation
- */
-export interface SingleLessonTSXConfig {
-  /** Vercel AI SDK model instance */
-  model: LanguageModel;
-  /** System prompt for TSX generation */
-  systemPrompt: string;
-  /** Function to build user prompt from input */
-  buildUserPrompt: (input: SingleLessonTSXInput) => string;
-  /** Temperature for generation (0.0-1.0) */
-  temperature?: number;
-}
 
 /**
  * Generate TSX code for a single lesson
@@ -136,55 +80,96 @@ export interface SingleLessonTSXConfig {
  * Pure function that delegates to Vercel AI SDK.
  * No error handling - let errors bubble up for caller to handle.
  *
+ * @param context - TSX generation context with model and configuration
  * @param input - Single lesson TSX input (title, blocks, context)
- * @param config - Generation configuration
  * @returns Promise resolving to SingleLessonTSXResult
  *
- * @example REPL usage
+ * @example
  * ```typescript
- * import { generateSingleLessonTSX } from './tsx-generator-core'
- * import { createAIModel } from './llm-config'
- * import { SingleLessonTSXResultSchema } from '../../types/tsx-generation.types'
- * import { TSX_GENERATION_SYSTEM_PROMPT, buildSingleLessonTSXPrompt } from '../../prompts/tsx-generation.prompts'
- *
- * const model = createAIModel('deepseek-coder-v2')
- * const input = {
- *   title: "Introduction to Photosynthesis",
- *   blocks: [
- *     { type: "text", content: "**What is photosynthesis?** Plants make..." },
- *     { type: "image", format: "svg", content: "...", alt: "Diagram" }
- *   ],
- *   context: {
- *     topic: "Photosynthesis",
- *     domains: ["science", "biology"],
- *     ageRange: [10, 11],
- *     complexity: "moderate"
- *   }
- * }
- * const result = await generateSingleLessonTSX(input, {
- *   model,
- *   systemPrompt: TSX_GENERATION_SYSTEM_PROMPT,
- *   buildUserPrompt: buildSingleLessonTSXPrompt,
- *   schema: SingleLessonTSXResultSchema,
- *   temperature: 0.4
- * })
+ * const context = createContextForSingleLessonTSX();
+ * const result = await generateSingleLessonTSX(context, input);
  * ```
  */
 export const generateSingleLessonTSX = async (
+  context: SingleLessonTSXContext,
   input: SingleLessonTSXInput,
-  config: SingleLessonTSXConfig,
 ): Promise<SingleLessonTSXResult> => {
   const result = await generateText({
-    model: config.model,
-    system: config.systemPrompt,
-    prompt: config.buildUserPrompt(input),
-    temperature: config.temperature ?? 0.4, // Lower temp for code generation (more deterministic)
+    model: context.model,
+    system: context.systemPrompt,
+    prompt: context.buildUserPrompt(input),
+    temperature: context.temperature,
   });
 
   // Return raw TSX code in result format
   // Strip markdown fences if LLM ignored instructions and wrapped code
-  // The result.text contains the complete TSX file content
   return {
-    tsxCode: stripMarkdownFences(result.text), // Raw TSX code from LLM, cleaned
+    tsxCode: stripMarkdownFences(result.text),
+  };
+};
+
+/**
+ * Context for batch TSX generation
+ * Bundles all model-specific configuration for this generation task
+ */
+export interface TSXGenerationContext {
+  model: LanguageModel;
+  temperature: number;
+  systemPrompt: string;
+  buildUserPrompt: (input: TSXGenerationInput) => string;
+}
+
+/**
+ * Create context for batch TSX generation
+ * Bundles model + prompts + temperature for this specific task
+ *
+ * Note: Batch generation is legacy. Production uses single-lesson generation.
+ * Kept for testing purposes.
+ *
+ * @returns TSX generation context with all configuration
+ */
+export const createContextForTSXGeneration = (): TSXGenerationContext => {
+  const modelName = process.env.CODE_GENERATION_MODEL || 'qwen2.5-coder';
+  const model = createAIModel(modelName);
+
+  return {
+    model,
+    temperature: 0.4,
+    systemPrompt: TSX_GENERATION_SYSTEM_PROMPT,
+    buildUserPrompt: buildTSXGenerationUserPrompt,
+  };
+};
+
+/**
+ * Generate TSX code from actionable blocks (batch mode)
+ *
+ * Legacy batch generation approach. Production uses single-lesson generation.
+ * Kept for testing purposes.
+ *
+ * @param context - TSX generation context with model and configuration
+ * @param input - TSX generation input (blocks result)
+ * @returns Promise resolving to TSXGenerationResult
+ */
+export const generateTSX = async (
+  context: TSXGenerationContext,
+  input: TSXGenerationInput,
+): Promise<TSXGenerationResult> => {
+  const result = await generateText({
+    model: context.model,
+    system: context.systemPrompt,
+    prompt: context.buildUserPrompt(input),
+    temperature: context.temperature,
+  });
+
+  return {
+    lessons: input.blocksResult.lessons.map((lesson) => ({
+      title: lesson.title,
+      tsxCode: result.text,
+    })),
+    metadata: {
+      lessonCount: input.blocksResult.lessons.length,
+      model: typeof context.model === 'string' ? context.model : 'unknown',
+      generatedAt: new Date().toISOString(),
+    },
   };
 };

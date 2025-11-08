@@ -1,14 +1,8 @@
 // Using XState v5.23.0 - https://statelyai.github.io/xstate/
 import type { ActionableBlocksResult, BlockGenerationInput } from '@/lib/types/actionable-blocks.types';
-import { ActionableBlocksResultSchema } from '@/lib/types/actionable-blocks.types';
 import type { EnhancedValidationResult } from '@/lib/types/validation.types';
 import { assign, createActor, fromPromise, setup } from 'xstate';
-import {
-  BLOCKS_GENERATION_SYSTEM_PROMPT,
-  buildBlocksGenerationUserPrompt,
-} from '../../prompts/blocks-generation.prompts';
-import { generateBlocks } from '../adapters/blocks-generator-core';
-import { createAIModel } from '../adapters/llm-config';
+import { createContextForBlocksGeneration, generateBlocks } from '../adapters/blocks-generator-core';
 import type { OutlineValidator } from '../adapters/outline-validator';
 import { logger } from '../logger';
 import { LessonRepository } from '../repositories/lesson.repository';
@@ -131,16 +125,8 @@ export const outlineRequestActorMachine = setup({
         validationFeedback: feedback,
       };
 
-      const modelName = process.env.CODE_GENERATION_MODEL || 'qwen2.5-coder';
-      const model = createAIModel(modelName);
-
-      const blocksResult = await generateBlocks(blocksInput, {
-        model,
-        systemPrompt: BLOCKS_GENERATION_SYSTEM_PROMPT,
-        buildUserPrompt: buildBlocksGenerationUserPrompt,
-        schema: ActionableBlocksResultSchema,
-        temperature: 0.6,
-      });
+      const context = createContextForBlocksGeneration();
+      const blocksResult = await generateBlocks(context, blocksInput);
 
       // Update blocks in database
       await input.outlineRepo.updateBlocks(input.outlineRequestId, blocksResult);

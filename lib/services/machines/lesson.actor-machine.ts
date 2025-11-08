@@ -2,11 +2,8 @@
 import type { Lesson } from '@/lib/types/actionable-blocks.types';
 import type { TSXValidationResult } from '@/lib/types/validation.types';
 import { assign, fromPromise, setup } from 'xstate';
-import { TSX_GENERATION_SYSTEM_PROMPT, buildSingleLessonTSXPrompt } from '../../prompts/tsx-generation.prompts';
-import { TSX_REGENERATION_SYSTEM_PROMPT, buildTSXRegenerationUserPrompt } from '../../prompts/tsx-regeneration.prompts';
-import { createAIModel } from '../adapters/llm-config';
-import { generateSingleLessonTSX } from '../adapters/tsx-generator-core';
-import { regenerateTSX } from '../adapters/tsx-regenerator-core';
+import { createContextForSingleLessonTSX, generateSingleLessonTSX } from '../adapters/tsx-generator-core';
+import { createContextForTSXRegeneration, regenerateTSX } from '../adapters/tsx-regenerator-core';
 import { compileAndWriteTSX } from '../compilation/tsx-compiler';
 import { logger } from '../logger';
 import type { LessonRepository } from '../repositories/lesson.repository';
@@ -109,22 +106,13 @@ export const lessonActorMachine = setup({
     >(async ({ input }) => {
       logger.info(`[Lesson ${input.lessonId}] Generating TSX code...`);
 
-      const modelName = process.env.CODE_GENERATION_MODEL || 'qwen2.5-coder';
-      const model = createAIModel(modelName);
+      const context = createContextForSingleLessonTSX();
 
-      const result = await generateSingleLessonTSX(
-        {
-          title: input.lesson.title,
-          blocks: input.lesson.blocks,
-          context: input.context,
-        },
-        {
-          model,
-          systemPrompt: TSX_GENERATION_SYSTEM_PROMPT,
-          buildUserPrompt: buildSingleLessonTSXPrompt,
-          temperature: 0.4,
-        },
-      );
+      const result = await generateSingleLessonTSX(context, {
+        title: input.lesson.title,
+        blocks: input.lesson.blocks,
+        context: input.context,
+      });
 
       // Store generated code in database
       await input.lessonRepo.updateGeneratedCode(input.lessonId, result.tsxCode);
@@ -232,24 +220,15 @@ export const lessonActorMachine = setup({
         // Regenerate TSX with error feedback
         logger.info(`[Lesson ${lessonId}] Regenerating TSX with error feedback...`);
 
-        const modelName = process.env.CODE_GENERATION_MODEL || 'qwen2.5-coder';
-        const model = createAIModel(modelName);
+        const context = createContextForTSXRegeneration();
 
-        const regenerationResult = await regenerateTSX(
-          {
-            originalCode: currentCode,
-            validationErrors: validationResult.errors,
-            lessonTitle: lesson.title,
-            blocks: lesson.blocks,
-            attemptNumber: attempts + 1,
-          },
-          {
-            model,
-            systemPrompt: TSX_REGENERATION_SYSTEM_PROMPT,
-            buildUserPrompt: buildTSXRegenerationUserPrompt,
-            temperature: 0.3,
-          },
-        );
+        const regenerationResult = await regenerateTSX(context, {
+          originalCode: currentCode,
+          validationErrors: validationResult.errors,
+          lessonTitle: lesson.title,
+          blocks: lesson.blocks,
+          attemptNumber: attempts + 1,
+        });
 
         currentCode = regenerationResult.tsxCode;
 

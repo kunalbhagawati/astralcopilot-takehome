@@ -17,12 +17,11 @@
  */
 
 import {
-  TSX_GENERATION_SYSTEM_PROMPT,
-  buildSingleLessonTSXPrompt,
-  buildTSXGenerationUserPrompt,
-} from '../lib/prompts/tsx-generation.prompts';
-import { createAIModel } from '../lib/services/adapters/llm-config';
-import { generateSingleLessonTSX, generateTSX } from '../lib/services/adapters/tsx-generator-core';
+  createContextForSingleLessonTSX,
+  createContextForTSXGeneration,
+  generateSingleLessonTSX,
+  generateTSX,
+} from '../lib/services/adapters/tsx-generator-core';
 import { logger } from '../lib/services/logger';
 import type { ActionableBlocksResult } from '../lib/types/actionable-blocks.types';
 import type { SingleLessonTSXInput, TSXGenerationInput, TSXGenerationResult } from '../lib/types/tsx-generation.types';
@@ -219,15 +218,8 @@ const runTest = async (verbose: boolean = false): Promise<TestResult> => {
       blocksResult: SAMPLE_BLOCKS,
     };
 
-    const modelName = process.env.CODE_GENERATION_MODEL || 'qwen2.5-coder';
-    const model = createAIModel(modelName);
-
-    const result = await generateTSX(input, {
-      model,
-      systemPrompt: TSX_GENERATION_SYSTEM_PROMPT,
-      buildUserPrompt: buildTSXGenerationUserPrompt,
-      temperature: 0.4,
-    });
+    const context = createContextForTSXGeneration();
+    const result = await generateTSX(context, input);
 
     // Schema validation
     try {
@@ -340,15 +332,8 @@ const runSingleLessonTest = async (verbose: boolean = false): Promise<TestResult
       },
     };
 
-    const modelName = process.env.CODE_GENERATION_MODEL || 'qwen2.5-coder';
-    const model = createAIModel(modelName);
-
-    const result = await generateSingleLessonTSX(input, {
-      model,
-      systemPrompt: TSX_GENERATION_SYSTEM_PROMPT,
-      buildUserPrompt: buildSingleLessonTSXPrompt,
-      temperature: 0.4,
-    });
+    const context = createContextForSingleLessonTSX();
+    const result = await generateSingleLessonTSX(context, input);
 
     // Schema validation
     try {

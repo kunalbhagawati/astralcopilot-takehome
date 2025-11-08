@@ -15,7 +15,7 @@
  * - Model names: Simple format (e.g., 'llama3.1', 'qwen2.5-coder:latest')
  *
  * When LLM_PROVIDER=gateway:
- * - AI_GATEWAY_API_KEY or OPENAI_API_KEY: API key (required)
+ * - AI_GATEWAY_API_KEY API key (required)
  * - OPENAI_BASE_URL: Gateway endpoint (required, e.g., https://gateway.vercel.app)
  * - Model names: Provider-prefixed format (e.g., 'anthropic/claude-haiku-4.5', 'openai/gpt-4o')
  * - See all available models: https://vercel.com/docs/ai-gateway/models-and-providers
@@ -82,13 +82,13 @@ export const createAIModel = (modelName: string): LanguageModel => {
   // Gateway provider - Vercel AI Gateway (supports all providers)
   if (provider === 'gateway') {
     // Support both Vercel AI Gateway key and direct OpenAI key
-    const apiKey = process.env.AI_GATEWAY_API_KEY || process.env.OPENAI_API_KEY;
+    const apiKey = process.env.AI_GATEWAY_API_KEY;
     const baseURL = process.env.OPENAI_BASE_URL;
 
     // Validate required configuration
     if (!apiKey) {
       throw new Error(
-        'AI_GATEWAY_API_KEY or OPENAI_API_KEY is required when LLM_PROVIDER=gateway\n' +
+        'AI_GATEWAY_API_KEY is required when LLM_PROVIDER=gateway\n' +
           'Get your Vercel AI Gateway key at: https://vercel.com/ai-gateway',
       );
     }
