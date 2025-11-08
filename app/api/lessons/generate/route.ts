@@ -7,6 +7,17 @@ import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { createActor } from 'xstate';
 
+// CORS headers
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
+
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: corsHeaders });
+}
+
 export async function POST(request: NextRequest) {
   logger.info('[API] POST /api/lessons/generate - Request received');
 
@@ -19,7 +30,7 @@ export async function POST(request: NextRequest) {
     // Validate input
     if (!outline || typeof outline !== 'string' || outline.trim().length === 0) {
       logger.info('[API] Validation failed: outline is required');
-      return NextResponse.json({ error: 'Lesson outline is required' }, { status: 400 });
+      return NextResponse.json({ error: 'Lesson outline is required' }, { status: 400, headers: corsHeaders });
     }
 
     // Create Supabase client
@@ -44,7 +55,7 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       logger.error('[API] Error creating outline request:', error);
-      return NextResponse.json({ error: 'Failed to create outline request' }, { status: 500 });
+      return NextResponse.json({ error: 'Failed to create outline request' }, { status: 500, headers: corsHeaders });
     }
 
     logger.info('[API] Outline request created:', outlineRequest.id);
@@ -56,7 +67,7 @@ export async function POST(request: NextRequest) {
       await outlineRepo.updateStatus(outlineRequest.id, 'submitted', undefined);
     } catch (statusError) {
       logger.error('[API] Error updating status:', statusError);
-      return NextResponse.json({ error: 'Failed to update status' }, { status: 500 });
+      return NextResponse.json({ error: 'Failed to update status' }, { status: 500, headers: corsHeaders });
     }
 
     // Trigger background processing using actor machine (async, non-blocking)
@@ -101,10 +112,10 @@ export async function POST(request: NextRequest) {
           created_at: outlineRequest.created_at,
         },
       },
-      { status: 201 },
+      { status: 201, headers: corsHeaders },
     );
   } catch (error) {
     logger.error('[API] Error in generate endpoint:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500, headers: corsHeaders });
   }
 }
