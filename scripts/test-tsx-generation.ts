@@ -16,11 +16,17 @@
  * Note: Actor machine uses sequential generation (1 prompt = 1 lesson = 1 table row)
  */
 
-import { createLLMClient } from '../lib/services/adapters/llm-client';
+import {
+  TSX_GENERATION_SYSTEM_PROMPT,
+  buildSingleLessonTSXPrompt,
+  buildTSXGenerationUserPrompt,
+} from '../lib/prompts/tsx-generation.prompts';
+import { createAIModel } from '../lib/services/adapters/llm-config';
+import { generateSingleLessonTSX, generateTSX } from '../lib/services/adapters/tsx-generator-core';
 import { logger } from '../lib/services/logger';
 import type { ActionableBlocksResult } from '../lib/types/actionable-blocks.types';
-import type { TSXGenerationInput, TSXGenerationResult, SingleLessonTSXInput } from '../lib/types/tsx-generation.types';
-import { TSXGenerationResultSchema, SingleLessonTSXResultSchema } from '../lib/types/tsx-generation.types';
+import type { SingleLessonTSXInput, TSXGenerationInput, TSXGenerationResult } from '../lib/types/tsx-generation.types';
+import { SingleLessonTSXResultSchema, TSXGenerationResultSchema } from '../lib/types/tsx-generation.types';
 import { createOllamaHealthCheck } from '../lib/utils/ollama-health-check';
 
 /**
@@ -199,7 +205,7 @@ const validateTSXFormat = (result: TSXGenerationResult): { valid: boolean; error
 /**
  * Run TSX generation test
  */
-const runTest = async (client: ReturnType<typeof createLLMClient>, verbose: boolean = false): Promise<TestResult> => {
+const runTest = async (verbose: boolean = false): Promise<TestResult> => {
   logger.info('─'.repeat(80));
   logger.info('📝 Test: TSX Generation from Blocks');
   logger.info(`   Topic: ${SAMPLE_BLOCKS.metadata.topic}`);
@@ -213,7 +219,15 @@ const runTest = async (client: ReturnType<typeof createLLMClient>, verbose: bool
       blocksResult: SAMPLE_BLOCKS,
     };
 
-    const result = await client.generateTSXFromBlocks(input);
+    const modelName = process.env.CODE_GENERATION_MODEL || 'qwen2.5-coder';
+    const model = createAIModel(modelName);
+
+    const result = await generateTSX(input, {
+      model,
+      systemPrompt: TSX_GENERATION_SYSTEM_PROMPT,
+      buildUserPrompt: buildTSXGenerationUserPrompt,
+      temperature: 0.4,
+    });
 
     // Schema validation
     try {
@@ -308,10 +322,7 @@ const runTest = async (client: ReturnType<typeof createLLMClient>, verbose: bool
  * Run single-lesson TSX generation test
  * Tests the sequential generation approach used by the actor machine
  */
-const runSingleLessonTest = async (
-  client: ReturnType<typeof createLLMClient>,
-  verbose: boolean = false,
-): Promise<TestResult> => {
+const runSingleLessonTest = async (verbose: boolean = false): Promise<TestResult> => {
   logger.info('─'.repeat(80));
   logger.info('📝 Test: Single-Lesson TSX Generation (Sequential)');
   logger.info(`   Testing first lesson from sample: ${SAMPLE_BLOCKS.lessons[0].title}`);
@@ -329,7 +340,15 @@ const runSingleLessonTest = async (
       },
     };
 
-    const result = await client.generateSingleLessonTSX(input);
+    const modelName = process.env.CODE_GENERATION_MODEL || 'qwen2.5-coder';
+    const model = createAIModel(modelName);
+
+    const result = await generateSingleLessonTSX(input, {
+      model,
+      systemPrompt: TSX_GENERATION_SYSTEM_PROMPT,
+      buildUserPrompt: buildSingleLessonTSXPrompt,
+      temperature: 0.4,
+    });
 
     // Schema validation
     try {
@@ -462,22 +481,21 @@ const runTests = async (verbose: boolean = false, singleOnly: boolean = false): 
   logger.info('\n' + '='.repeat(80));
   logger.info('🧪 Running TSX generation tests...\n');
 
-  const client = createLLMClient();
   const results: TestResult[] = [];
 
   if (singleOnly) {
     // Only run single-lesson test
     logger.info('   (Running single-lesson test only)\n');
-    const singleResult = await runSingleLessonTest(client, verbose);
+    const singleResult = await runSingleLessonTest(verbose);
     results.push(singleResult);
   } else {
     // Run both batch and single-lesson tests
     logger.info('   (Running both batch and single-lesson tests)\n');
-    const batchResult = await runTest(client, verbose);
+    const batchResult = await runTest(verbose);
     results.push(batchResult);
 
     logger.info('\n');
-    const singleResult = await runSingleLessonTest(client, verbose);
+    const singleResult = await runSingleLessonTest(verbose);
     results.push(singleResult);
   }
 

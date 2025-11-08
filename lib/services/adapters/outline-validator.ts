@@ -1,8 +1,11 @@
 import { ValidationResult } from '@/lib/types/validation.types';
 import { isEmpty, isNil } from 'ramda';
-import { LLMClient, createLLMClient } from './llm-client';
 import type { EnhancedValidationResult } from '@/lib/types/validation.types';
+import { EnhancedValidationResultSchema } from '@/lib/types/validation.types';
 import { applyValidationThresholds } from '../validation-rules.service';
+import { createAIModel } from './llm-config';
+import { generateValidationResult } from './outline-validation.core';
+import { VALIDATION_SYSTEM_PROMPT, buildValidationUserPrompt } from '../../prompts/validation.prompts';
 
 /**
  * Adapter interface for outline validation systems
@@ -46,15 +49,9 @@ export class SimpleOutlineValidator implements OutlineValidator {
  * Business logic (threshold checking, error formatting) is handled
  * by validation-rules.service.ts following SoC principles.
  *
- * Provider-agnostic (works with any LLM via LLMClient)
+ * Provider-agnostic (works with any LLM via Vercel AI SDK)
  */
 export class LLMOutlineValidator implements OutlineValidator {
-  private client: LLMClient;
-
-  constructor(client?: LLMClient) {
-    this.client = client || createLLMClient();
-  }
-
   async validate(outline: string): Promise<EnhancedOutlineValidationResult> {
     // Basic validation first
     if (isNil(outline) || isEmpty(outline.trim())) {
@@ -66,7 +63,16 @@ export class LLMOutlineValidator implements OutlineValidator {
 
     // LLM-based validation for safety, specificity, and actionability
     // Returns raw scores and feedback
-    const enhancedResult = await this.client.validateOutline(outline);
+    const modelName = process.env.OUTLINE_VALIDATION_MODEL || 'llama3.1';
+    const model = createAIModel(modelName);
+
+    const enhancedResult = await generateValidationResult(outline, {
+      model,
+      systemPrompt: VALIDATION_SYSTEM_PROMPT,
+      buildUserPrompt: buildValidationUserPrompt,
+      schema: EnhancedValidationResultSchema,
+      temperature: 0.2,
+    });
 
     // Apply threshold business rules to determine pass/fail
     const validationOutcome = applyValidationThresholds(enhancedResult);
