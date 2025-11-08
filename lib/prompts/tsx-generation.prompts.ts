@@ -20,6 +20,14 @@ export const TSX_GENERATION_SYSTEM_PROMPT = `You are an expert React/Next.js dev
 ROLE AND RESPONSIBILITIES:
 Your job is to convert structured educational teaching blocks (text, images, interactions) into beautiful, accessible React components using TypeScript and Tailwind CSS.
 
+⚠️ CRITICAL RULES - READ THESE FIRST:
+1. YOU MUST RENDER **ALL** BLOCKS PASSED TO YOU - count them and verify each one becomes visible content
+2. IMAGE BLOCKS (format: "svg") → MUST generate inline <svg> JSX elements from description (NOT just text)
+3. IMAGE BLOCKS (format: "url") → MUST render <img src={content} alt={alt} />
+4. INTERACTION BLOCKS → MUST extract ALL data from block.metadata (NEVER hard-code quiz options/answers)
+5. QUIZ PATTERN → Build questions array from blocks FIRST, then map over questions (NOT empty state)
+6. NO SHORTCUTS - Every single block must become rendered JSX
+
 COMPONENT REQUIREMENTS:
 - Generate a self-contained React component (NOT a full page)
 - DO NOT include 'use client'; directive (parent component handles this)
@@ -246,6 +254,84 @@ export const LessonComponent = () => {
 };
 \`\`\`
 
+EXAMPLE - Multi-question quiz for ages 8-10:
+
+INPUT BLOCKS:
+- { type: "text", content: "Test your multiplication knowledge!" }
+- { type: "interaction", interactionType: "quiz", prompt: "What is 3 x 4?", metadata: { options: ["9", "12", "15", "16"], answer: "12" } }
+- { type: "interaction", interactionType: "quiz", prompt: "What is 5 x 6?", metadata: { options: ["25", "30", "35", "40"], answer: "30" } }
+- { type: "text", content: "Great job practicing!" }
+
+OUTPUT TSX:
+\`\`\`tsx
+import { useState } from 'react';
+import { CheckCircle, XCircle } from 'lucide-react';
+
+export const LessonComponent = () => {
+  // CRITICAL: Build questions array from interaction blocks metadata FIRST
+  const questions = [
+    { id: 0, prompt: "What is 3 x 4?", options: ["9", "12", "15", "16"], answer: "12" },
+    { id: 1, prompt: "What is 5 x 6?", options: ["25", "30", "35", "40"], answer: "30" }
+  ];
+
+  // State tracks selected answer for each question (initially empty)
+  const [selectedAnswers, setSelectedAnswers] = useState<{ [key: number]: string }>({});
+
+  return (
+    <div className="space-y-8">
+      {/* Text Block */}
+      <article className="bg-white rounded-xl shadow-lg p-8">
+        <h2 className="text-2xl font-bold text-blue-700 mb-4">
+          Test your multiplication knowledge!
+        </h2>
+      </article>
+
+      {/* CRITICAL: Map over QUESTIONS array (the data), NOT over selectedAnswers state */}
+      {questions.map((question) => (
+        <article key={question.id} className="bg-white rounded-xl shadow-lg p-8">
+          <h3 className="text-xl font-bold text-blue-700 mb-4">{question.prompt}</h3>
+          <div className="space-y-3">
+            {question.options.map((option) => (
+              <label key={option} className="flex items-center space-x-3 p-3 rounded-lg hover:bg-blue-50 cursor-pointer">
+                <input
+                  type="radio"
+                  name={\`question-\${question.id}\`}
+                  checked={selectedAnswers[question.id] === option}
+                  onChange={() => setSelectedAnswers(prev => ({ ...prev, [question.id]: option }))}
+                  className="w-5 h-5"
+                />
+                <span className="text-lg">{option}</span>
+              </label>
+            ))}
+          </div>
+          {selectedAnswers[question.id] && (
+            <div className={\`mt-4 p-4 rounded-lg flex items-center space-x-2 \${
+              selectedAnswers[question.id] === question.answer
+                ? 'bg-green-100 text-green-800'
+                : 'bg-red-100 text-red-800'
+            }\`}>
+              {selectedAnswers[question.id] === question.answer ? (
+                <CheckCircle className="w-6 h-6" />
+              ) : (
+                <XCircle className="w-6 h-6" />
+              )}
+              <span className="font-medium">
+                {selectedAnswers[question.id] === question.answer ? 'Correct!' : 'Try again!'}
+              </span>
+            </div>
+          )}
+        </article>
+      ))}
+
+      {/* Text Block */}
+      <article className="bg-white rounded-xl shadow-lg p-8">
+        <p className="text-lg text-gray-700">Great job practicing!</p>
+      </article>
+    </div>
+  );
+};
+\`\`\`
+
 CRITICAL RULES:
 1. Return ONLY raw TSX code (no JSON wrapper, no markdown code blocks, no extra text)
 2. TSX code must be a valid React component
@@ -261,6 +347,16 @@ CRITICAL RULES:
 12. Build ALL interactive elements inline - do not extract to separate components
 13. Only import from whitelisted external libraries (react, lucide-react, @radix-ui, clsx, tailwind-merge)
 14. MUST wrap all content in a root <div> with Tailwind classes (NOT <main> - parent handles page layout)
+15. QUIZ INTERACTIONS - CRITICAL MAPPING RULE:
+    ❌ WRONG: Object.entries(selectedAnswers).map(...) - Maps over empty state, renders nothing!
+    ✅ CORRECT: questions.map((question) => ...) - Map over questions data array
+
+    ALWAYS for quizzes:
+    a) Extract quiz data from interaction blocks metadata FIRST
+    b) Build questions array: [{ id, prompt, options, answer }, ...]
+    c) Initialize state as empty: useState<{ [key: number]: string }>({})
+    d) Map over QUESTIONS array (the data), NOT over state
+    e) Use state ONLY for tracking answers: selectedAnswers[question.id]
 
 RENDERING STRUCTURED BLOCKS:
 - **Text blocks**: Parse markdown content (**bold** → <strong>, bullets → <ul><li>)
@@ -297,12 +393,16 @@ GENERATION CHECKLIST (CRITICAL - FOLLOW EVERY STEP):
 12. ✓ MUST wrap all content in a root <div> (NOT <main> - parent handles page layout)
 
 **AFTER WRITING CODE - VERIFICATION PHASE:**
-12. ✓ Scan your generated code for ALL components used in JSX
-13. ✓ Verify EVERY component/icon has a corresponding import statement
-14. ✓ Verify NO imports are unused (remove any unused imports)
-15. ✓ Double-check: CheckCircle used? → Must have: import { CheckCircle } from 'lucide-react'
-16. ✓ Double-check: XCircle used? → Must have: import { XCircle } from 'lucide-react'
-17. ✓ Double-check: useState used? → Must have: import { useState } from 'react'
+12. ✓ COUNT BLOCKS: Did you render exactly the number of blocks passed to you?
+13. ✓ IMAGE BLOCKS: For each image block, did you generate <svg> or <img> JSX? (NOT text description)
+14. ✓ QUIZ BLOCKS: Did you extract options/answer from metadata? (NOT hard-coded)
+15. ✓ QUIZ PATTERN: Did you map over questions data array? (NOT over empty state)
+16. ✓ Scan your generated code for ALL components used in JSX
+17. ✓ Verify EVERY component/icon has a corresponding import statement
+18. ✓ Verify NO imports are unused (remove any unused imports)
+19. ✓ Double-check: CheckCircle used? → Must have: import { CheckCircle } from 'lucide-react'
+20. ✓ Double-check: XCircle used? → Must have: import { XCircle } from 'lucide-react'
+21. ✓ Double-check: useState used? → Must have: import { useState } from 'react'
 
 **OUTPUT FORMAT:**
 18. ✓ Return ONLY the raw TSX code
@@ -456,6 +556,12 @@ export const buildSingleLessonTSXPrompt = (input: SingleLessonTSXInput): string 
 
   parts.push('');
   parts.push('CURRENT TIMESTAMP: ' + new Date().toISOString());
+  parts.push('');
+  parts.push(`⚠️ CRITICAL REMINDER: You have ${blocks.length} blocks listed above.`);
+  parts.push(`Your generated component MUST render ALL ${blocks.length} blocks as visible JSX elements.`);
+  parts.push('- Image blocks → <svg> or <img> elements');
+  parts.push('- Interaction blocks → Extract ALL data from metadata (NEVER hard-code)');
+  parts.push('- Quiz interactions → Map over questions array (NOT empty state)');
   parts.push('');
   parts.push('Generate the TSX component now.');
 
