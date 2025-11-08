@@ -72,8 +72,8 @@ export interface LLMClientConfig {
  */
 const DEFAULT_CONFIG: Required<LLMClientConfig> = {
   host: process.env.OLLAMA_HOST || 'http://localhost:11434',
-  validationModel: process.env.OLLAMA_VALIDATION_MODEL || 'llama3.1',
-  generationModel: process.env.OLLAMA_GENERATION_MODEL || 'qwen2.5-coder',
+  validationModel: process.env.OUTLINE_VALIDATION_MODEL || 'llama3.1',
+  generationModel: process.env.CODE_GENERATION_MODEL || 'qwen2.5-coder',
   validationTemperature: 0.2,
   generationTemperature: 0.6,
   timeout: 60000,
