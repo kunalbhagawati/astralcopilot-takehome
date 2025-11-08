@@ -142,12 +142,17 @@ const validateTSXFormat = (result: TSXGenerationResult): { valid: boolean; error
       }
     }
 
-    if (!lesson.originalBlocks || lesson.originalBlocks.length === 0) {
-      errors.push(`Lesson ${idx + 1}: Missing originalBlocks`);
-    }
+    // Parse imports from TSX code for validation
+    const importMatches = lesson.tsxCode.match(/import .+ from ['"]([^'"]+)['"]/g) || [];
+    const imports = importMatches
+      .map((imp) => {
+        const match = imp.match(/from ['"]([^'"]+)['"]/);
+        return match ? match[1] : '';
+      })
+      .filter(Boolean);
 
     // Import validation (Phase 2)
-    if (lesson.imports && lesson.imports.length > 0) {
+    if (imports.length > 0) {
       const allowedImports = [
         'lucide-react',
         '@radix-ui/react-checkbox',
@@ -158,7 +163,7 @@ const validateTSXFormat = (result: TSXGenerationResult): { valid: boolean; error
       ];
       const blockedImports = ['next/link', 'next/navigation', 'next/router', '@supabase/supabase-js', '@supabase/ssr'];
 
-      lesson.imports.forEach((importPath) => {
+      imports.forEach((importPath) => {
         if (blockedImports.includes(importPath)) {
           errors.push(`Lesson ${idx + 1}: Uses blocked import "${importPath}" (navigation/database not allowed)`);
         } else if (!allowedImports.includes(importPath)) {
@@ -232,12 +237,26 @@ const runTest = async (client: ReturnType<typeof createLLMClient>, verbose: bool
     // Show TSX samples
     result.lessons.forEach((lesson, idx) => {
       logger.info(`\n   📄 Lesson ${idx + 1}: ${lesson.title}`);
-      logger.info(`      Original Blocks: ${lesson.originalBlocks.length}`);
+
+      // Get original blocks count from input
+      const originalLesson = SAMPLE_BLOCKS.lessons[idx];
+      if (originalLesson) {
+        logger.info(`      Original Blocks: ${originalLesson.blocks.length}`);
+      }
+
       logger.info(`      TSX Length: ${lesson.tsxCode.length} characters`);
 
-      // Display imports if present
-      if (lesson.imports && lesson.imports.length > 0) {
-        logger.info(`      Imports: ${lesson.imports.join(', ')}`);
+      // Parse imports from TSX code
+      const importMatches = lesson.tsxCode.match(/import .+ from ['"]([^'"]+)['"]/g) || [];
+      const imports = importMatches
+        .map((imp) => {
+          const match = imp.match(/from ['"]([^'"]+)['"]/);
+          return match ? match[1] : '';
+        })
+        .filter(Boolean);
+
+      if (imports.length > 0) {
+        logger.info(`      Imports: ${imports.join(', ')}`);
       } else {
         logger.info(`      Imports: None`);
       }
@@ -327,10 +346,6 @@ const runSingleLessonTest = async (
     // Basic validation
     const errors: string[] = [];
 
-    if (!result.title || result.title.length < 3) {
-      errors.push('Invalid title');
-    }
-
     if (!result.tsxCode || result.tsxCode.length < 50) {
       errors.push('TSX code too short');
     }
@@ -343,17 +358,26 @@ const runSingleLessonTest = async (
       errors.push("TSX code doesn't appear to be a valid React component");
     }
 
-    if (!result.componentName || result.componentName !== 'LessonComponent') {
-      errors.push(`Invalid component name: expected "LessonComponent", got "${result.componentName}"`);
+    if (!result.tsxCode.includes('LessonComponent')) {
+      errors.push('TSX code must export LessonComponent');
     }
 
-    logger.info(`\n   📄 Lesson: ${result.title}`);
-    logger.info(`      Component Name: ${result.componentName}`);
+    logger.info(`\n   📄 Lesson: ${input.title}`);
+    logger.info(`      Component Name: LessonComponent (expected)`);
     logger.info(`      TSX Length: ${result.tsxCode.length} characters`);
-    logger.info(`      Original Blocks: ${result.originalBlocks.length}`);
+    logger.info(`      Original Blocks: ${input.blocks.length}`);
 
-    if (result.imports && result.imports.length > 0) {
-      logger.info(`      Imports: ${result.imports.join(', ')}`);
+    // Parse imports from TSX code
+    const importMatches = result.tsxCode.match(/import .+ from ['"]([^'"]+)['"]/g) || [];
+    const imports = importMatches
+      .map((imp) => {
+        const match = imp.match(/from ['"]([^'"]+)['"]/);
+        return match ? match[1] : '';
+      })
+      .filter(Boolean);
+
+    if (imports.length > 0) {
+      logger.info(`      Imports: ${imports.join(', ')}`);
     } else {
       logger.info(`      Imports: None`);
     }
@@ -419,11 +443,11 @@ const runTests = async (verbose: boolean = false, singleOnly: boolean = false): 
   logger.info(`📦 Available models: ${health.models?.join(', ') || 'unknown'}`);
 
   // Determine which model to use
-  const modelToUse = process.env.OLLAMA_GENERATION_MODEL || 'llama3.1';
+  const modelToUse = process.env.CODE_GENERATION_MODEL || 'llama3.1';
   logger.info(`\n📦 Using model: ${modelToUse}`);
   logger.info('   💡 Recommended: deepseek-coder-v2 for best TSX generation');
   logger.info('      Run: ollama pull deepseek-coder-v2');
-  logger.info('      Then set: OLLAMA_GENERATION_MODEL=deepseek-coder-v2');
+  logger.info('      Then set: CODE_GENERATION_MODEL=deepseek-coder-v2');
 
   // Ensure model is available
   logger.info(`\n📦 Ensuring ${modelToUse} model is available...`);

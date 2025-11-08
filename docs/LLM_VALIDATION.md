@@ -71,8 +71,8 @@ Add to your `.env.local`:
 ```bash
 # Ollama Configuration
 OLLAMA_HOST=http://localhost:11434
-OLLAMA_VALIDATION_MODEL=llama3.1
-OLLAMA_GENERATION_MODEL=llama3.1
+OUTLINE_VALIDATION_MODEL=llama3.1
+CODE_GENERATION_MODEL=llama3.1
 
 # Feature Flags
 USE_LLM_VALIDATION=true
@@ -333,7 +333,7 @@ ollama pull llama3.1
 ### Validation Always Fails
 
 1. Check Ollama logs: `ollama serve` output
-2. Verify model is correct: Check `OLLAMA_VALIDATION_MODEL`
+2. Verify model is correct: Check `OUTLINE_VALIDATION_MODEL`
 3. Test with curl:
    ```bash
    curl http://localhost:11434/api/generate -d '{

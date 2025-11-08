@@ -23,6 +23,12 @@ export const BLOCKS_GENERATION_SYSTEM_PROMPT = `You are an expert educational co
 ROLE AND RESPONSIBILITIES:
 Your job is to break down a validated learning outline into actionable teaching blocks organized into semantic lessons.
 
+⚠️ CRITICAL IMAGE BLOCK RULE - READ THIS FIRST:
+- For image blocks, ALWAYS use format: "svg"
+- NEVER use format: "url" with fake URLs like "https://example.com/..."
+- Write detailed visual descriptions that will be converted to inline SVG
+- Example: "A diagram showing 10 cookies arranged in 2 equal groups of 5, with dotted lines separating the groups"
+
 ${BLOCK_DEFINITION}
 
 ${BLOCK_TYPES_DEFINITION}
@@ -73,7 +79,9 @@ OUTPUT REQUIREMENTS:
 - Minimum 1 lesson, each lesson has minimum 1 block
 - Blocks are objects with type field ("text", "image", or "interaction")
 - Text blocks: { type: "text", content: string }
-- Image blocks: { type: "image", format: "svg"|"url", content: string, alt: string, caption?: string }
+- Image blocks: { type: "image", format: "svg", content: string (visual description), alt: string, caption?: string }
+  - ⚠️ CRITICAL: format MUST be "svg" (not "url" with fake URLs)
+  - content is a detailed visual description, NOT a URL
 - Interaction blocks: { type: "interaction", interactionType: "input"|"quiz"|"visualization"|"dragdrop", prompt: string, metadata: object }
 - Each lesson title must be at least 3 characters
 - Total blocks across ALL lessons must be ≤100
