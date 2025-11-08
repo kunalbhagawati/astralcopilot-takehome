@@ -10,7 +10,7 @@
  * Note: Verbose mode shows all generated blocks (default shows first 2 only)
  */
 
-import { createLLMClient } from '../lib/services/adapters/llm-client';
+import { createContextForBlocksGeneration, generateBlocks } from '../lib/services/adapters/blocks-generator-core';
 import { logger } from '../lib/services/logger';
 import type { ActionableBlocksResult } from '../lib/types/actionable-blocks.types';
 import { ActionableBlocksResultSchema } from '../lib/types/actionable-blocks.types';
@@ -194,11 +194,7 @@ const validateBlocksFormat = (
 /**
  * Run blocks generation test for a single fixture
  */
-const runTest = async (
-  client: ReturnType<typeof createLLMClient>,
-  fixture: BlockGenerationFixture,
-  verbose: boolean = false,
-): Promise<TestResult> => {
+const runTest = async (fixture: BlockGenerationFixture, verbose: boolean = false): Promise<TestResult> => {
   logger.info('─'.repeat(80));
   logger.info(`📝 Test: ${fixture.name}`);
   logger.info(`   Outline: "${fixture.input.originalOutline}"`);
@@ -211,7 +207,8 @@ const runTest = async (
 
   try {
     // Generate blocks
-    const result = await client.generateBlocks(fixture.input);
+    const context = createContextForBlocksGeneration();
+    const result = await generateBlocks(context, fixture.input);
 
     // Schema validation
     try {
@@ -359,12 +356,11 @@ const runTests = async (verbose: boolean = false): Promise<void> => {
   logger.info('\n' + '='.repeat(80));
   logger.info('🧪 Running blocks generation tests...\n');
 
-  const client = createLLMClient();
   const results: TestResult[] = [];
 
   // Run all tests
   for (const fixture of BLOCKS_GENERATION_FIXTURES) {
-    const result = await runTest(client, fixture, verbose);
+    const result = await runTest(fixture, verbose);
     results.push(result);
   }
 

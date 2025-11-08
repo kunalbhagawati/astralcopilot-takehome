@@ -9,33 +9,65 @@
  * - Follow SRP and SoC principles
  *
  * Used in validation retry loops to fix LLM-generated code.
+ *
+ * Context pattern: Model-specific config bundled together for consistency between tests and production.
  */
 
-import { generateText } from 'ai';
 import type { LanguageModel } from 'ai';
+import { generateText } from 'ai';
+import { TSX_REGENERATION_SYSTEM_PROMPT, buildTSXRegenerationUserPrompt } from '../../prompts/tsx-regeneration.prompts';
 import type { TSXRegenerationInput, TSXRegenerationResult } from '../../types/tsx-generation.types';
 import { stripMarkdownFences } from '../../utils/strip-markdown-fences';
+import { createAIModel } from './llm-config';
 
 /**
- * Configuration for TSX regeneration
+ * Context for TSX regeneration
+ * Bundles all model-specific configuration for this generation task
  */
-export interface TSXRegenerationConfig {
-  /** Vercel AI SDK model instance */
+export interface TSXRegenerationContext {
   model: LanguageModel;
-  /** System prompt for TSX regeneration */
+  temperature: number;
   systemPrompt: string;
-  /** Function to build user prompt from input */
   buildUserPrompt: (input: TSXRegenerationInput) => string;
-  /** Temperature for generation (0.0-1.0) */
-  temperature?: number;
 }
+
+/**
+ * Create context for TSX regeneration
+ * Bundles model + prompts + temperature for this specific task
+ *
+ * Used by both production code and tests to ensure identical configuration.
+ *
+ * @returns TSX regeneration context with all configuration
+ *
+ * @example Production usage
+ * ```typescript
+ * const context = createContextForTSXRegeneration();
+ * const result = await regenerateTSX(context, input);
+ * ```
+ *
+ * @example Test usage
+ * ```typescript
+ * const context = createContextForTSXRegeneration();
+ * const result = await regenerateTSX(context, testInput);
+ * ```
+ */
+export const createContextForTSXRegeneration = (): TSXRegenerationContext => {
+  const modelName = process.env.CODE_GENERATION_MODEL || 'qwen2.5-coder';
+  const model = createAIModel(modelName);
+
+  return {
+    model,
+    temperature: 0.3, // Even lower temperature for deterministic error fixing
+    systemPrompt: TSX_REGENERATION_SYSTEM_PROMPT,
+    buildUserPrompt: buildTSXRegenerationUserPrompt,
+  };
+};
 
 /**
  * Regenerate TSX code based on validation errors
  *
  * Pure function that delegates to Vercel AI SDK.
  * No error handling - let errors bubble up for caller to handle.
- * Easy to test and use in REPL.
  *
  * This is called during validation retry loops when TSX fails validation:
  * 1. TSX generation produces code
@@ -43,52 +75,30 @@ export interface TSXRegenerationConfig {
  * 3. TSX regeneration (this function) fixes errors
  * 4. Validation re-runs on fixed code
  *
+ * @param context - TSX regeneration context with model and configuration
  * @param input - TSX regeneration input (original code + errors)
- * @param config - Regeneration configuration
  * @returns Promise resolving to TSXRegenerationResult
  *
- * @example REPL usage
+ * @example
  * ```typescript
- * import { regenerateTSX } from './tsx-regenerator-core'
- * import { createAIModel } from './llm-config'
- * import { TSXRegenerationResultSchema } from '../../types/tsx-generation.types'
- * import { TSX_REGENERATION_SYSTEM_PROMPT, buildTSXRegenerationUserPrompt } from '../../prompts/tsx-regeneration.prompts'
- *
- * const model = createAIModel('deepseek-coder-v2')
- * const input = {
- *   originalCode: '...buggy TSX code...',
- *   componentName: 'LessonComponent',
- *   validationErrors: [
- *     { type: 'typescript', line: 5, column: 10, message: 'Cannot redeclare...', ... }
- *   ],
- *   lessonTitle: 'Photosynthesis Basics',
- *   blocks: [...],
- *   attemptNumber: 2
- * }
- * const result = await regenerateTSX(input, {
- *   model,
- *   systemPrompt: TSX_REGENERATION_SYSTEM_PROMPT,
- *   buildUserPrompt: buildTSXRegenerationUserPrompt,
- *   schema: TSXRegenerationResultSchema,
- *   temperature: 0.3
- * })
+ * const context = createContextForTSXRegeneration();
+ * const result = await regenerateTSX(context, input);
  * ```
  */
 export const regenerateTSX = async (
+  context: TSXRegenerationContext,
   input: TSXRegenerationInput,
-  config: TSXRegenerationConfig,
 ): Promise<TSXRegenerationResult> => {
   const result = await generateText({
-    model: config.model,
-    system: config.systemPrompt,
-    prompt: config.buildUserPrompt(input),
-    temperature: config.temperature ?? 0.3, // Lower temp for error fixing (deterministic)
+    model: context.model,
+    system: context.systemPrompt,
+    prompt: context.buildUserPrompt(input),
+    temperature: context.temperature,
   });
 
   // Return raw TSX code in result format
   // Strip markdown fences if LLM ignored instructions and wrapped code
-  // The result.text contains the fixed TSX file content
   return {
-    tsxCode: stripMarkdownFences(result.text), // Raw fixed TSX code from LLM, cleaned
+    tsxCode: stripMarkdownFences(result.text),
   };
 };

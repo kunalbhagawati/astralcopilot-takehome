@@ -1,15 +1,15 @@
 // Using XState v5.23.0 - https://statelyai.github.io/xstate/
 import type { ActionableBlocksResult, BlockGenerationInput } from '@/lib/types/actionable-blocks.types';
 import type { EnhancedValidationResult } from '@/lib/types/validation.types';
-import { assign, fromPromise, setup, createActor } from 'xstate';
-import type { LLMClient } from '../adapters/llm-client';
+import { assign, createActor, fromPromise, setup } from 'xstate';
+import { createContextForBlocksGeneration, generateBlocks } from '../adapters/blocks-generator-core';
 import type { OutlineValidator } from '../adapters/outline-validator';
-import type { OutlineRequestRepository } from '../repositories/outline-request.repository';
-import { LessonRepository } from '../repositories/lesson.repository';
-import { extractValidationFeedback } from '../validation-rules.service';
-import { lessonActorMachine } from './lesson.actor-machine';
-import { registerActor } from './actor-registry';
 import { logger } from '../logger';
+import { LessonRepository } from '../repositories/lesson.repository';
+import type { OutlineRequestRepository } from '../repositories/outline-request.repository';
+import { extractValidationFeedback } from '../validation-rules.service';
+import { registerActor } from './actor-registry';
+import { lessonActorMachine } from './lesson.actor-machine';
 
 /**
  * Context for the actor-based outline request state machine
@@ -26,7 +26,6 @@ interface OutlineRequestActorContext {
 
   // Injected dependencies
   validator: OutlineValidator;
-  llmClient: LLMClient;
   outlineRepo: OutlineRequestRepository;
 
   // Results from each stage (stored in context for subsequent stages)
@@ -110,7 +109,6 @@ export const outlineRequestActorMachine = setup({
     generateBlocks: fromPromise<
       ActionableBlocksResult,
       {
-        llmClient: LLMClient;
         outline: string;
         validationResult: EnhancedValidationResult;
         outlineRepo: OutlineRequestRepository;
@@ -127,7 +125,8 @@ export const outlineRequestActorMachine = setup({
         validationFeedback: feedback,
       };
 
-      const blocksResult = await input.llmClient.generateBlocks(blocksInput);
+      const context = createContextForBlocksGeneration();
+      const blocksResult = await generateBlocks(context, blocksInput);
 
       // Update blocks in database
       await input.outlineRepo.updateBlocks(input.outlineRequestId, blocksResult);
@@ -172,7 +171,6 @@ export const outlineRequestActorMachine = setup({
                   ageRange: blocksResult.metadata.ageRange,
                   complexity: blocksResult.metadata.complexity,
                 },
-                llmClient: input.llmClient,
                 lessonRepo,
                 maxValidationAttempts: 3,
               },
@@ -276,7 +274,6 @@ export const outlineRequestActorMachine = setup({
       invoke: {
         src: 'generateBlocks',
         input: ({ context }) => ({
-          llmClient: context.llmClient,
           outline: context.outline,
           validationResult: context.validationResult!,
           outlineRepo: context.outlineRepo,

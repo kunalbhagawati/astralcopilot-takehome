@@ -2,11 +2,12 @@
 import type { Lesson } from '@/lib/types/actionable-blocks.types';
 import type { TSXValidationResult } from '@/lib/types/validation.types';
 import { assign, fromPromise, setup } from 'xstate';
+import { createContextForSingleLessonTSX, generateSingleLessonTSX } from '../adapters/tsx-generator-core';
+import { createContextForTSXRegeneration, regenerateTSX } from '../adapters/tsx-regenerator-core';
 import { compileAndWriteTSX } from '../compilation/tsx-compiler';
-import { validateTSX } from '../validation/tsx-validation-orchestrator';
-import type { LLMClient } from '../adapters/llm-client';
-import type { LessonRepository } from '../repositories/lesson.repository';
 import { logger } from '../logger';
+import type { LessonRepository } from '../repositories/lesson.repository';
+import { validateTSX } from '../validation/tsx-validation-orchestrator';
 
 /**
  * Context for the lesson state machine
@@ -37,7 +38,6 @@ interface LessonActorContext {
   };
 
   // Injected dependencies
-  llmClient: LLMClient;
   lessonRepo: LessonRepository;
 
   // Configuration
@@ -98,7 +98,6 @@ export const lessonActorMachine = setup({
     generateTSX: fromPromise<
       { tsxCode: string },
       {
-        llmClient: LLMClient;
         lesson: Lesson;
         context: LessonActorContext['context'];
         lessonRepo: LessonRepository;
@@ -107,7 +106,9 @@ export const lessonActorMachine = setup({
     >(async ({ input }) => {
       logger.info(`[Lesson ${input.lessonId}] Generating TSX code...`);
 
-      const result = await input.llmClient.generateSingleLessonTSX({
+      const context = createContextForSingleLessonTSX();
+
+      const result = await generateSingleLessonTSX(context, {
         title: input.lesson.title,
         blocks: input.lesson.blocks,
         context: input.context,
@@ -142,12 +143,11 @@ export const lessonActorMachine = setup({
         lessonId: string;
         lesson: Lesson;
         context: LessonActorContext['context'];
-        llmClient: LLMClient;
         lessonRepo: LessonRepository;
         maxValidationAttempts: number;
       }
     >(async ({ input }) => {
-      const { tsxCode, lessonId, lesson, llmClient, lessonRepo, maxValidationAttempts } = input;
+      const { tsxCode, lessonId, lesson, lessonRepo, maxValidationAttempts } = input;
 
       // Update status to validating
       await lessonRepo.updateStatus(lessonId, 'lesson.validating', undefined);
@@ -220,7 +220,9 @@ export const lessonActorMachine = setup({
         // Regenerate TSX with error feedback
         logger.info(`[Lesson ${lessonId}] Regenerating TSX with error feedback...`);
 
-        const regenerationResult = await llmClient.regenerateTSXWithFeedback({
+        const context = createContextForTSXRegeneration();
+
+        const regenerationResult = await regenerateTSX(context, {
           originalCode: currentCode,
           validationErrors: validationResult.errors,
           lessonTitle: lesson.title,
@@ -249,7 +251,6 @@ export const lessonActorMachine = setup({
       invoke: {
         src: 'generateTSX',
         input: ({ context }) => ({
-          llmClient: context.llmClient,
           lesson: context.lesson,
           context: context.context,
           lessonRepo: context.lessonRepo,
@@ -294,7 +295,6 @@ export const lessonActorMachine = setup({
           lessonId: context.lessonId,
           lesson: context.lesson,
           context: context.context,
-          llmClient: context.llmClient,
           lessonRepo: context.lessonRepo,
           maxValidationAttempts: context.maxValidationAttempts,
         }),

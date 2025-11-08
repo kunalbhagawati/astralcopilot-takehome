@@ -1,8 +1,8 @@
+import type { EnhancedValidationResult } from '@/lib/types/validation.types';
 import { ValidationResult } from '@/lib/types/validation.types';
 import { isEmpty, isNil } from 'ramda';
-import { LLMClient, createLLMClient } from './llm-client';
-import type { EnhancedValidationResult } from '@/lib/types/validation.types';
 import { applyValidationThresholds } from '../validation-rules.service';
+import { createContextForOutlineValidation, generateValidationResult } from './outline-validation.core';
 
 /**
  * Adapter interface for outline validation systems
@@ -46,15 +46,9 @@ export class SimpleOutlineValidator implements OutlineValidator {
  * Business logic (threshold checking, error formatting) is handled
  * by validation-rules.service.ts following SoC principles.
  *
- * Provider-agnostic (works with any LLM via LLMClient)
+ * Provider-agnostic (works with any LLM via Vercel AI SDK)
  */
 export class LLMOutlineValidator implements OutlineValidator {
-  private client: LLMClient;
-
-  constructor(client?: LLMClient) {
-    this.client = client || createLLMClient();
-  }
-
   async validate(outline: string): Promise<EnhancedOutlineValidationResult> {
     // Basic validation first
     if (isNil(outline) || isEmpty(outline.trim())) {
@@ -66,7 +60,8 @@ export class LLMOutlineValidator implements OutlineValidator {
 
     // LLM-based validation for safety, specificity, and actionability
     // Returns raw scores and feedback
-    const enhancedResult = await this.client.validateOutline(outline);
+    const context = createContextForOutlineValidation();
+    const enhancedResult = await generateValidationResult(context, outline);
 
     // Apply threshold business rules to determine pass/fail
     const validationOutcome = applyValidationThresholds(enhancedResult);

@@ -1,4 +1,3 @@
-import { createLLMClient } from '@/lib/services/adapters/llm-client';
 import { getOutlineValidator } from '@/lib/services/adapters/outline-validator';
 import { logger } from '@/lib/services/logger';
 import { outlineRequestActorMachine } from '@/lib/services/machines/outline-request.actor-machine';
@@ -73,7 +72,6 @@ export async function POST(request: NextRequest) {
           outlineRequestId: outlineRequest.id,
           outline: createdOutlineRequest.outline,
           validator: getOutlineValidator(),
-          llmClient: createLLMClient(),
           outlineRepo,
         },
       });
