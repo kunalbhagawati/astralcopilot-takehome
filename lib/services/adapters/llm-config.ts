@@ -21,9 +21,9 @@
  * - See all available models: https://vercel.com/docs/ai-gateway/models-and-providers
  */
 
-import { ollama } from 'ollama-ai-provider-v2';
 import { createOpenAI } from '@ai-sdk/openai';
 import type { LanguageModel } from 'ai';
+import { ollama } from 'ollama-ai-provider-v2';
 
 /**
  * Create a Vercel AI SDK model instance
@@ -83,7 +83,6 @@ export const createAIModel = (modelName: string): LanguageModel => {
   if (provider === 'gateway') {
     // Support both Vercel AI Gateway key and direct OpenAI key
     const apiKey = process.env.AI_GATEWAY_API_KEY;
-    const baseURL = process.env.OPENAI_BASE_URL;
 
     // Validate required configuration
     if (!apiKey) {
@@ -93,24 +92,9 @@ export const createAIModel = (modelName: string): LanguageModel => {
       );
     }
 
-    if (!baseURL) {
-      throw new Error(
-        'OPENAI_BASE_URL is required when LLM_PROVIDER=gateway\n' +
-          'Set to your gateway endpoint, e.g., OPENAI_BASE_URL=https://gateway.vercel.app',
-      );
-    }
-
-    // Validate baseURL format
-    if (!baseURL.startsWith('http')) {
-      throw new Error('OPENAI_BASE_URL must start with http:// or https://');
-    }
-
     // Create OpenAI-compatible client
     // Works with Vercel AI Gateway, Azure OpenAI, OpenRouter, etc.
-    const gateway = createOpenAI({
-      apiKey,
-      baseURL,
-    });
+    const gateway = createOpenAI({ apiKey });
 
     return gateway(modelName);
   }
