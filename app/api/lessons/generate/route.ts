@@ -4,8 +4,14 @@ import { outlineRequestActorMachine } from '@/lib/services/machines/outline-requ
 import { registerActor } from '@/lib/services/machines/actor-registry';
 import { OutlineRequestRepository } from '@/lib/services/repositories/outline-request.repository';
 import { createClient } from '@/lib/supabase/server';
+import { after } from 'next/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { createActor } from 'xstate';
+
+// Enable extended execution time for background actor processing
+// Requires Fluid Compute enabled in Vercel Dashboard (Settings > Functions)
+// Max 800 seconds on Pro/Enterprise plans with Fluid Compute
+export const maxDuration = 800;
 
 // CORS headers
 const corsHeaders = {
@@ -70,38 +76,51 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to update status' }, { status: 500, headers: corsHeaders });
     }
 
-    // Trigger background processing using actor machine (async, non-blocking)
-    logger.info('[API] Triggering background processing...');
+    // Trigger background processing using actor machine (runs after response sent)
+    logger.info('[API] Scheduling background processing with after()...');
 
-    // Fetch the created outline request for the actor
-    const createdOutlineRequest = await outlineRepo.findById(outlineRequest.id);
+    // Use after() to run actor processing after response is sent
+    // This allows the API to return immediately while work continues in background
+    after(async () => {
+      try {
+        logger.info('[API] Background processing started for outline request:', outlineRequest.id);
 
-    if (createdOutlineRequest) {
-      // Create and start the actor machine
-      const actor = createActor(outlineRequestActorMachine, {
-        input: {
-          outlineRequestId: outlineRequest.id,
-          outline: createdOutlineRequest.outline,
-          validator: getOutlineValidator(),
-          outlineRepo,
-        },
-      });
+        // Fetch the created outline request for the actor
+        const createdOutlineRequest = await outlineRepo.findById(outlineRequest.id);
 
-      // Register actor to prevent garbage collection
-      registerActor(outlineRequest.id, actor, 'outline');
+        if (createdOutlineRequest) {
+          // Create and start the actor machine
+          const actor = createActor(outlineRequestActorMachine, {
+            input: {
+              outlineRequestId: outlineRequest.id,
+              outline: createdOutlineRequest.outline,
+              validator: getOutlineValidator(),
+              outlineRepo,
+            },
+          });
 
-      // Subscribe for logging
-      actor.subscribe({
-        complete: () => logger.info(`[Actor] Outline request ${outlineRequest.id} completed`),
-        error: (error) => logger.error(`[Actor] Outline request ${outlineRequest.id} failed:`, error),
-      });
+          // Register actor to prevent garbage collection
+          registerActor(outlineRequest.id, actor, 'outline');
 
-      // Start the machine (non-blocking)
-      actor.start();
-    }
+          // Subscribe for logging
+          actor.subscribe({
+            complete: () => logger.info(`[Actor] Outline request ${outlineRequest.id} completed`),
+            error: (error) => logger.error(`[Actor] Outline request ${outlineRequest.id} failed:`, error),
+          });
+
+          // Start the machine (non-blocking)
+          actor.start();
+          logger.info('[API] Actor machine started for outline request:', outlineRequest.id);
+        } else {
+          logger.error('[API] Failed to fetch outline request for actor:', outlineRequest.id);
+        }
+      } catch (error) {
+        logger.error('[API] Error in background processing:', error);
+      }
+    });
 
     // Return the created outline request immediately
-    logger.info('[API] Returning success response');
+    logger.info('[API] Returning success response (background processing scheduled)');
     return NextResponse.json(
       {
         success: true,
