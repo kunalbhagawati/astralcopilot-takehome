@@ -83,13 +83,23 @@ export const generateValidationResult = async (
   context: OutlineValidationContext,
   outline: string,
 ): Promise<EnhancedValidationResult> => {
-  const result = await generateObject({
-    model: context.model,
-    schema: context.schema,
-    system: context.systemPrompt,
-    prompt: context.buildUserPrompt(outline),
-    temperature: context.temperature,
-  });
+  try {
+    const result = await generateObject({
+      model: context.model,
+      schema: context.schema,
+      system: context.systemPrompt,
+      prompt: context.buildUserPrompt(outline),
+      temperature: context.temperature,
+    });
 
-  return result.object;
+    return result.object;
+  } catch (error) {
+    console.error('[Validation Error] Full error:', JSON.stringify(error, null, 2));
+    console.error('[Validation Error] Error details:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      cause: error instanceof Error ? error.cause : undefined,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    throw error;
+  }
 };
