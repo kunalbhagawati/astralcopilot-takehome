@@ -89,6 +89,17 @@ export const outlineRequestActorMachine = setup({
 
       // Check validation result
       if (!result.valid) {
+        logger.error(`[Actor ${input.outlineRequestId}] Validation FAILED. Errors:`, result.errors);
+
+        // Update failed status BEFORE throwing (final state invokes are unreliable)
+        const errorMetadata = {
+          message: 'Validation failed: ' + (result.errors?.join(', ') || 'Unknown error'),
+          error: 'ValidationError',
+          errors: result.errors,
+        };
+        await input.outlineRepo.updateStatus(input.outlineRequestId, 'failed', errorMetadata);
+        logger.info(`[Actor ${input.outlineRequestId}] Failed status updated in database`);
+
         throw new Error('Validation failed: ' + (result.errors?.join(', ') || 'Unknown error'));
       }
 
@@ -263,13 +274,25 @@ export const outlineRequestActorMachine = setup({
           {
             // System error
             target: 'error',
-            actions: assign({
-              error: ({ event }) => ({
-                message: event.error instanceof Error ? event.error.message : 'Validation system error',
-                error: event.error instanceof Error ? event.error.name : 'UnknownError',
-                context: { stage: 'outline_validation' },
+            actions: [
+              assign({
+                error: ({ event }) => ({
+                  message: event.error instanceof Error ? event.error.message : 'Validation system error',
+                  error: event.error instanceof Error ? event.error.name : 'UnknownError',
+                  context: { stage: 'outline_validation' },
+                }),
               }),
-            }),
+              // Update error status in DB (final state invokes are unreliable)
+              async ({ context, event }) => {
+                const errorMetadata = {
+                  message: event.error instanceof Error ? event.error.message : 'Validation system error',
+                  error: event.error instanceof Error ? event.error.name : 'UnknownError',
+                  context: { stage: 'outline_validation' },
+                };
+                await context.outlineRepo.updateStatus(context.outlineRequestId, 'error', errorMetadata);
+                logger.info(`[Actor ${context.outlineRequestId}] Error status updated in database`);
+              },
+            ],
           },
         ],
       },
@@ -309,13 +332,25 @@ export const outlineRequestActorMachine = setup({
         },
         onError: {
           target: 'error',
-          actions: assign({
-            error: ({ event }) => ({
-              message: event.error instanceof Error ? event.error.message : 'Blocks generation system error',
-              error: event.error instanceof Error ? event.error.name : 'UnknownError',
-              context: { stage: 'blocks_generation' },
+          actions: [
+            assign({
+              error: ({ event }) => ({
+                message: event.error instanceof Error ? event.error.message : 'Blocks generation system error',
+                error: event.error instanceof Error ? event.error.name : 'UnknownError',
+                context: { stage: 'blocks_generation' },
+              }),
             }),
-          }),
+            // Update error status in DB (final state invokes are unreliable)
+            async ({ context, event }) => {
+              const errorMetadata = {
+                message: event.error instanceof Error ? event.error.message : 'Blocks generation system error',
+                error: event.error instanceof Error ? event.error.name : 'UnknownError',
+                context: { stage: 'blocks_generation' },
+              };
+              await context.outlineRepo.updateStatus(context.outlineRequestId, 'error', errorMetadata);
+              logger.info(`[Actor ${context.outlineRequestId}] Error status updated in database`);
+            },
+          ],
         },
       },
     },
