@@ -3,6 +3,7 @@ import { OutlineRequestRepository } from '@/lib/services/repositories/outline-re
 import { createClient } from '@/lib/supabase/server';
 import { processOutlineWorkflow } from '@/lib/workflows/outline-workflow';
 import { NextRequest, NextResponse } from 'next/server';
+import { start } from 'workflow/api';
 
 // CORS headers
 const corsHeaders = {
@@ -67,20 +68,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to update status' }, { status: 500, headers: corsHeaders });
     }
 
-    // Trigger workflow (durability handled automatically by Workflow DevKit)
+    // Trigger workflow using Workflow DevKit's start() function
+    // This properly enqueues the workflow with durability guarantees
     logger.info('[API] Triggering outline processing workflow...');
 
-    // Fire-and-forget: Workflow will continue even if function terminates
-    // Note: Cannot pass repository instances - workflows will create them in steps
-    processOutlineWorkflow({
-      outlineRequestId: outlineRequest.id,
-      outline: outlineRequest.outline,
-    }).catch((error) => {
-      logger.error('[API] Workflow failed:', error);
-    });
+    const run = await start(processOutlineWorkflow, [
+      {
+        outlineRequestId: outlineRequest.id,
+        outline: outlineRequest.outline,
+      },
+    ]);
+
+    logger.info('[API] Workflow started with runId:', run.runId);
 
     // Return the created outline request immediately
-    logger.info('[API] Returning success response (workflow started)');
+    logger.info('[API] Returning success response (workflow enqueued)');
     return NextResponse.json(
       {
         success: true,

@@ -153,15 +153,14 @@ async function spawnLessonWorkflowsStep(input: {
 
   // Import inside step to avoid workflow-level restrictions
   const { LessonRepository } = await import('../services/repositories/lesson.repository');
-  const { processLessonWorkflow } = await import('./lesson-workflow');
   const { logger } = await import('../services/logger');
 
   const { outlineRequestId, blocksResult } = input;
   const lessonRepo = new LessonRepository();
 
-  logger.info(`[Workflow ${outlineRequestId}] Creating lesson records and spawning workflows...`);
+  logger.info(`[Workflow ${outlineRequestId}] Creating lesson records and triggering workflows...`);
 
-  // Create lesson records and spawn workflows in parallel
+  // Create lesson records and trigger independent workflows in parallel
   const lessonWorkflowPromises = blocksResult.lessons.map(async (lesson: Lesson) => {
     try {
       // Create lesson record in database
@@ -169,27 +168,43 @@ async function spawnLessonWorkflowsStep(input: {
 
       logger.info(`[Workflow ${outlineRequestId}] Created lesson record ${lessonRecord.id} for "${lesson.title}"`);
 
-      // Trigger child workflow
-      return processLessonWorkflow({
-        lessonId: lessonRecord.id,
-        outlineRequestId,
-        lesson,
-        context: {
-          topic: blocksResult.metadata.topic,
-          domains: blocksResult.metadata.domains,
-          ageRange: blocksResult.metadata.ageRange,
-          complexity: blocksResult.metadata.complexity,
-        },
-        maxValidationAttempts: 3,
+      // Trigger independent lesson workflow via API endpoint
+      // Use VERCEL_URL (auto-set by Vercel) or localhost for local dev
+      const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000';
+
+      const response = await fetch(`${baseUrl}/api/lessons/${lessonRecord.id}/process`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lessonId: lessonRecord.id,
+          outlineRequestId,
+          lesson,
+          context: {
+            topic: blocksResult.metadata.topic,
+            domains: blocksResult.metadata.domains,
+            ageRange: blocksResult.metadata.ageRange,
+            complexity: blocksResult.metadata.complexity,
+          },
+          maxValidationAttempts: 3,
+        }),
       });
+
+      if (!response.ok) {
+        throw new Error(`Failed to trigger lesson workflow: ${response.statusText}`);
+      }
+
+      const { runId } = await response.json();
+      logger.info(`[Workflow ${outlineRequestId}] Triggered lesson workflow ${runId} for "${lesson.title}"`);
+
+      return { runId };
     } catch (error) {
       logger.error(`[Workflow ${outlineRequestId}] Failed to spawn lesson workflow for "${lesson.title}":`, error);
       throw error;
     }
   });
 
-  // Wait for all lesson workflows to complete
+  // Wait for all lesson workflows to be triggered
   await Promise.all(lessonWorkflowPromises);
 
-  logger.info(`[Workflow ${outlineRequestId}] All lesson workflows completed`);
+  logger.info(`[Workflow ${outlineRequestId}] All lesson workflows triggered`);
 }
