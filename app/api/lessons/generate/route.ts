@@ -77,43 +77,46 @@ export async function POST(request: NextRequest) {
     }
 
     // Trigger background processing using actor machine (runs after response sent)
-    logger.info('[API] Scheduling background processing with after()...');
+    // This is critical for Vercel: after() keeps the function alive after the response
+    logger.info('[API] Scheduling background processing...');
 
-    // Use after() to run actor processing after response is sent
-    // This allows the API to return immediately while work continues in background
     after(async () => {
-      try {
-        logger.info('[API] Background processing started for outline request:', outlineRequest.id);
+      logger.info('[API] Background processing started for outline request:', outlineRequest.id);
 
+      try {
         // Fetch the created outline request for the actor
         const createdOutlineRequest = await outlineRepo.findById(outlineRequest.id);
 
-        if (createdOutlineRequest) {
-          // Create and start the actor machine
-          const actor = createActor(outlineRequestActorMachine, {
-            input: {
-              outlineRequestId: outlineRequest.id,
-              outline: createdOutlineRequest.outline,
-              validator: getOutlineValidator(),
-              outlineRepo,
-            },
-          });
-
-          // Register actor to prevent garbage collection
-          registerActor(outlineRequest.id, actor, 'outline');
-
-          // Subscribe for logging
-          actor.subscribe({
-            complete: () => logger.info(`[Actor] Outline request ${outlineRequest.id} completed`),
-            error: (error) => logger.error(`[Actor] Outline request ${outlineRequest.id} failed:`, error),
-          });
-
-          // Start the machine (non-blocking)
-          actor.start();
-          logger.info('[API] Actor machine started for outline request:', outlineRequest.id);
-        } else {
-          logger.error('[API] Failed to fetch outline request for actor:', outlineRequest.id);
+        if (!createdOutlineRequest) {
+          logger.error('[API] Failed to fetch outline request:', outlineRequest.id);
+          return;
         }
+
+        // Create and start the actor machine
+        const actor = createActor(outlineRequestActorMachine, {
+          input: {
+            outlineRequestId: outlineRequest.id,
+            outline: createdOutlineRequest.outline,
+            validator: getOutlineValidator(),
+            outlineRepo,
+          },
+        });
+
+        // Register actor to prevent garbage collection
+        registerActor(outlineRequest.id, actor, 'outline');
+
+        // Subscribe for logging with more detail
+        actor.subscribe({
+          next: (snapshot) => {
+            logger.info(`[Actor ${outlineRequest.id}] State:`, snapshot.value, 'Status:', snapshot.status);
+          },
+          complete: () => logger.info(`[Actor] Outline request ${outlineRequest.id} completed`),
+          error: (error) => logger.error(`[Actor] Outline request ${outlineRequest.id} failed:`, error),
+        });
+
+        // Start the machine (non-blocking)
+        actor.start();
+        logger.info('[API] Actor machine started for outline request:', outlineRequest.id);
       } catch (error) {
         logger.error('[API] Error in background processing:', error);
       }

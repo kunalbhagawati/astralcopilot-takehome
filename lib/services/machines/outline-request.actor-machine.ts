@@ -78,10 +78,14 @@ export const outlineRequestActorMachine = setup({
         outlineRequestId: string;
       }
     >(async ({ input }) => {
+      logger.info(`[Actor ${input.outlineRequestId}] Starting outline validation...`);
+
       // Update validating status (timestamp only)
       await input.outlineRepo.updateStatus(input.outlineRequestId, 'outline.validating', undefined);
 
+      logger.info(`[Actor ${input.outlineRequestId}] Calling LLM validator...`);
       const result = await input.validator.validate(input.outline);
+      logger.info(`[Actor ${input.outlineRequestId}] Validation completed. Valid:`, result.valid);
 
       // Check validation result
       if (!result.valid) {
@@ -98,6 +102,7 @@ export const outlineRequestActorMachine = setup({
       // Update validating status with validation result metadata
       await input.outlineRepo.updateStatus(input.outlineRequestId, 'outline.validating', enhancedResult);
 
+      logger.info(`[Actor ${input.outlineRequestId}] Validation result stored successfully`);
       return enhancedResult;
     }),
 
@@ -115,10 +120,13 @@ export const outlineRequestActorMachine = setup({
         outlineRequestId: string;
       }
     >(async ({ input }) => {
+      logger.info(`[Actor ${input.outlineRequestId}] Starting blocks generation...`);
+
       // Update blocks generating status (timestamp only)
       await input.outlineRepo.updateStatus(input.outlineRequestId, 'outline.blocks.generating', undefined);
 
       const feedback = extractValidationFeedback(input.validationResult);
+      logger.info(`[Actor ${input.outlineRequestId}] Extracted validation feedback`);
 
       const blocksInput: BlockGenerationInput = {
         originalOutline: input.outline,
@@ -126,7 +134,9 @@ export const outlineRequestActorMachine = setup({
       };
 
       const context = createContextForBlocksGeneration();
+      logger.info(`[Actor ${input.outlineRequestId}] Calling LLM for blocks generation...`);
       const blocksResult = await generateBlocks(context, blocksInput);
+      logger.info(`[Actor ${input.outlineRequestId}] Blocks generated:`, blocksResult.lessons.length, 'lessons');
 
       // Update blocks in database
       await input.outlineRepo.updateBlocks(input.outlineRequestId, blocksResult);
@@ -211,10 +221,16 @@ export const outlineRequestActorMachine = setup({
   context: ({ input }) => input,
   states: {
     submitted: {
+      entry: ({ context }) => {
+        logger.info(`[Actor ${context.outlineRequestId}] Entered state: submitted`);
+      },
       always: 'validating',
     },
 
     validating: {
+      entry: ({ context }) => {
+        logger.info(`[Actor ${context.outlineRequestId}] Entered state: validating`);
+      },
       invoke: {
         src: 'validateOutline',
         input: ({ context }) => ({
@@ -260,6 +276,9 @@ export const outlineRequestActorMachine = setup({
     },
 
     validated: {
+      entry: ({ context }) => {
+        logger.info(`[Actor ${context.outlineRequestId}] Entered state: validated`);
+      },
       invoke: {
         src: fromPromise(async ({ input }: { input: OutlineRequestActorContext }) => {
           // Update validated status with validation result
@@ -271,6 +290,9 @@ export const outlineRequestActorMachine = setup({
     },
 
     blocks_generating: {
+      entry: ({ context }) => {
+        logger.info(`[Actor ${context.outlineRequestId}] Entered state: blocks_generating`);
+      },
       invoke: {
         src: 'generateBlocks',
         input: ({ context }) => ({
@@ -300,10 +322,16 @@ export const outlineRequestActorMachine = setup({
 
     blocks_generated: {
       type: 'final',
+      entry: ({ context }) => {
+        logger.info(`[Actor ${context.outlineRequestId}] Entered state: blocks_generated (final)`);
+      },
     },
 
     failed: {
       type: 'final',
+      entry: ({ context }) => {
+        logger.info(`[Actor ${context.outlineRequestId}] Entered state: failed (final)`);
+      },
       invoke: {
         src: fromPromise(async ({ input }: { input: OutlineRequestActorContext }) => {
           // Update failed status with error metadata
@@ -315,6 +343,9 @@ export const outlineRequestActorMachine = setup({
 
     error: {
       type: 'final',
+      entry: ({ context }) => {
+        logger.info(`[Actor ${context.outlineRequestId}] Entered state: error (final)`, context.error);
+      },
       invoke: {
         src: fromPromise(async ({ input }: { input: OutlineRequestActorContext }) => {
           // Update error status with error metadata
