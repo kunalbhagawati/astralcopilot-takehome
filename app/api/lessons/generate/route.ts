@@ -1,17 +1,8 @@
-import { getOutlineValidator } from '@/lib/services/adapters/outline-validator';
 import { logger } from '@/lib/services/logger';
-import { outlineRequestActorMachine } from '@/lib/services/machines/outline-request.actor-machine';
-import { registerActor } from '@/lib/services/machines/actor-registry';
 import { OutlineRequestRepository } from '@/lib/services/repositories/outline-request.repository';
 import { createClient } from '@/lib/supabase/server';
-import { after } from 'next/server';
+import { processOutlineWorkflow } from '@/lib/workflows/outline-workflow';
 import { NextRequest, NextResponse } from 'next/server';
-import { createActor } from 'xstate';
-
-// Enable extended execution time for background actor processing
-// Requires Fluid Compute enabled in Vercel Dashboard (Settings > Functions)
-// Max 800 seconds on Pro/Enterprise plans with Fluid Compute
-export const maxDuration = 800;
 
 // CORS headers
 const corsHeaders = {
@@ -76,54 +67,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to update status' }, { status: 500, headers: corsHeaders });
     }
 
-    // Trigger background processing using actor machine (runs after response sent)
-    // This is critical for Vercel: after() keeps the function alive after the response
-    logger.info('[API] Scheduling background processing...');
+    // Trigger workflow (durability handled automatically by Workflow DevKit)
+    logger.info('[API] Triggering outline processing workflow...');
 
-    after(async () => {
-      logger.info('[API] Background processing started for outline request:', outlineRequest.id);
-
-      try {
-        // Fetch the created outline request for the actor
-        const createdOutlineRequest = await outlineRepo.findById(outlineRequest.id);
-
-        if (!createdOutlineRequest) {
-          logger.error('[API] Failed to fetch outline request:', outlineRequest.id);
-          return;
-        }
-
-        // Create and start the actor machine
-        const actor = createActor(outlineRequestActorMachine, {
-          input: {
-            outlineRequestId: outlineRequest.id,
-            outline: createdOutlineRequest.outline,
-            validator: getOutlineValidator(),
-            outlineRepo,
-          },
-        });
-
-        // Register actor to prevent garbage collection
-        registerActor(outlineRequest.id, actor, 'outline');
-
-        // Subscribe for logging with more detail
-        actor.subscribe({
-          next: (snapshot) => {
-            logger.info(`[Actor ${outlineRequest.id}] State:`, snapshot.value, 'Status:', snapshot.status);
-          },
-          complete: () => logger.info(`[Actor] Outline request ${outlineRequest.id} completed`),
-          error: (error) => logger.error(`[Actor] Outline request ${outlineRequest.id} failed:`, error),
-        });
-
-        // Start the machine (non-blocking)
-        actor.start();
-        logger.info('[API] Actor machine started for outline request:', outlineRequest.id);
-      } catch (error) {
-        logger.error('[API] Error in background processing:', error);
-      }
+    // Fire-and-forget: Workflow will continue even if function terminates
+    // Note: Cannot pass repository instances - workflows will create them in steps
+    processOutlineWorkflow({
+      outlineRequestId: outlineRequest.id,
+      outline: outlineRequest.outline,
+    }).catch((error) => {
+      logger.error('[API] Workflow failed:', error);
     });
 
     // Return the created outline request immediately
-    logger.info('[API] Returning success response (background processing scheduled)');
+    logger.info('[API] Returning success response (workflow started)');
     return NextResponse.json(
       {
         success: true,
